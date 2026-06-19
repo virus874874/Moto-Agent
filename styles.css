@@ -144,45 +144,6 @@ h1 {
   opacity: 0.8;
 }
 
-.route-line {
-  position: absolute;
-  left: 50%;
-  top: -12%;
-  width: 16px;
-  height: 126%;
-  border-radius: 999px;
-  background: #c3f400;
-  box-shadow: 0 0 30px rgba(195, 244, 0, 0.45);
-  transform: translateX(-50%) rotate(8deg);
-}
-
-.route-line::before {
-  position: absolute;
-  content: "";
-  left: -34px;
-  top: 34%;
-  width: 84px;
-  height: 190px;
-  border-radius: 999px;
-  background: rgba(13, 15, 15, 0.9);
-  box-shadow: 0 0 24px rgba(13, 15, 15, 0.82);
-}
-
-.route-line::after {
-  position: absolute;
-  content: "";
-  width: 16px;
-  border-radius: 999px;
-  background: #c3f400;
-}
-
-.route-line::after {
-  right: -34px;
-  bottom: 18%;
-  height: 150px;
-  transform: rotate(38deg);
-}
-
 .function-row,
 .speed-stage,
 .risk-card {
