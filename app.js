@@ -9,6 +9,8 @@ const LEVEL2_CONFIRM_MS = 700;
 const LEVEL0_COOLDOWN_MS = 5000;
 const CRITICAL_CUE_INTERVAL_MS = 1300;
 const ROLL_DISPLAY_INTERVAL_MS = 1000;
+const JERK_DISPLAY_INTERVAL_MS = 1000;
+const ORIENTATION_LOCK = "portrait";
 const JERK_COLOR_BANDS = [
   { zone: "calm", max: 4 },
   { zone: "watch", max: 8 },
@@ -64,12 +66,14 @@ const state = {
   },
   lastLevel0At: 0,
   lastRollRenderAt: 0,
+  lastJerkRenderAt: 0,
   audioContext: null,
   lastCriticalCueAt: 0,
 };
 
 permissionButton.addEventListener("click", async () => {
   await primeAudio();
+  await lockScreenOrientation();
   const sensorReady = await requestSensorPermission();
   requestGpsPermission();
 
@@ -145,6 +149,21 @@ function requestGpsPermission() {
       timeout: 8000,
     }
   );
+}
+
+async function lockScreenOrientation() {
+  const orientation = window.screen?.orientation;
+  if (!orientation || typeof orientation.lock !== "function") {
+    writeLog("此瀏覽器不支援直向鎖定，已保留 PWA 直向顯示設定。");
+    return;
+  }
+
+  try {
+    await orientation.lock(ORIENTATION_LOCK);
+    writeLog("已請求鎖定直向顯示。");
+  } catch {
+    writeLog("瀏覽器未允許鎖定螢幕方向，建議從主畫面 PWA 開啟測試。");
+  }
 }
 
 function handlePosition(position) {
@@ -380,8 +399,7 @@ function render(features, risk) {
   ui.speed.textContent = features.speedKmh > 0 ? features.speedKmh.toFixed(0) : "--";
   ui.speedBar.style.width = `${Math.min(100, Math.max(4, (features.speedKmh / 120) * 100))}%`;
   renderRoll(features.rollDeg);
-  ui.jerk.textContent = features.jerk.toFixed(1);
-  ui.jerkMetric.dataset.jerkZone = jerkZone(features.jerk);
+  renderJerk(features.jerk);
 
   if (risk.level === 2) {
     triggerCriticalCue();
@@ -393,6 +411,14 @@ function renderRoll(rollDeg) {
   if (now - state.lastRollRenderAt < ROLL_DISPLAY_INTERVAL_MS) return;
   state.lastRollRenderAt = now;
   ui.roll.textContent = rollDeg.toFixed(1);
+}
+
+function renderJerk(jerk) {
+  const now = Date.now();
+  if (now - state.lastJerkRenderAt < JERK_DISPLAY_INTERVAL_MS) return;
+  state.lastJerkRenderAt = now;
+  ui.jerk.textContent = jerk.toFixed(1);
+  ui.jerkMetric.dataset.jerkZone = jerkZone(jerk);
 }
 
 function jerkZone(jerk) {
