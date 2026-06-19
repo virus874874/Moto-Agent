@@ -10,6 +10,9 @@ const LEVEL2_CONFIRM_MS = 1800;
 const CRITICAL_CUE_INTERVAL_MS = 1300;
 const ROLL_DISPLAY_INTERVAL_MS = 1000;
 const JERK_DISPLAY_INTERVAL_MS = 1000;
+const LEVEL1_JERK_THRESHOLD = 500;
+const LEVEL2_JERK_THRESHOLD = 700;
+const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
 const LEVEL2_RECOVERY_HOLD_MS = 1400;
@@ -307,10 +310,11 @@ function calculateFeatures() {
 function inferRisk(features) {
   const highSpeed = features.speedKmh >= 60;
   const citySpeed = features.speedKmh >= 30;
+  const level2Speed = features.speedKmh >= 40;
   const highLean = Math.abs(features.rollDeg) >= 40;
   const extremeLean = Math.abs(features.rollDeg) >= 46;
-  const heavyJerk = features.jerk >= 12;
-  const extremeJerk = features.jerk >= 18;
+  const heavyJerk = features.jerk >= LEVEL1_JERK_THRESHOLD;
+  const extremeJerk = features.jerk >= LEVEL2_JERK_THRESHOLD;
   const unstableYaw =
     features.yawRateRms >= 44 ||
     features.yawRateVariance >= 760 ||
@@ -332,18 +336,19 @@ function inferRisk(features) {
   const modelFatigue = features.level1MlReady && level1RideEvidence && features.mlLabel === "fatigue";
   const severeModelCritical =
     modelCritical &&
-    (features.speedKmh >= 45 ||
+    (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD ||
       extremeLean ||
       extremeJerk ||
       extremeYaw ||
       (features.mlFeatures?.absAccRms ?? 0) >= 13.8);
   const rawLevel2 =
-    severeModelCritical ||
-    (features.speedKmh >= 75 && highLean) ||
-    (highSpeed && extremeLean) ||
-    (features.speedKmh >= 45 && highLean && extremeJerk) ||
-    (highSpeed && extremeYaw) ||
-    (features.lateralGProxy >= 0.84 && features.speedKmh >= 45);
+    level2Speed &&
+    (severeModelCritical ||
+      (features.speedKmh >= 75 && highLean) ||
+      (highSpeed && extremeLean) ||
+      (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD && highLean && extremeJerk) ||
+      (highSpeed && extremeYaw) ||
+      (features.lateralGProxy >= 0.84 && features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD));
   const rawLevel1 =
     modelCritical ||
     modelFatigue ||
