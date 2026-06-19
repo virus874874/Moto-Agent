@@ -1,4 +1,4 @@
-const CACHE_NAME = "moto-agent-v8";
+const CACHE_NAME = "moto-agent-v9";
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -11,7 +11,9 @@ const APP_ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_ASSETS))
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(APP_ASSETS.map((asset) => new Request(asset, { cache: "reload" })))
+    )
   );
   self.skipWaiting();
 });
@@ -27,9 +29,23 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
+  const requestUrl = new URL(event.request.url);
+  const isSameOrigin = requestUrl.origin === self.location.origin;
+
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match("./index.html"))
+      fetch(event.request, { cache: "reload" }).catch(() => caches.match("./index.html"))
+    );
+    return;
+  }
+
+  if (isSameOrigin) {
+    event.respondWith(
+      fetch(event.request, { cache: "reload" }).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      }).catch(() => caches.match(event.request))
     );
     return;
   }
