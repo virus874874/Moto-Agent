@@ -2,6 +2,9 @@ import { classifyMotoRisk } from "./aerox_ml_rules.js";
 
 const SAMPLE_WINDOW_LIMIT = 160;
 const YAW_WINDOW_LIMIT = 80;
+const MIN_ML_SAMPLES = 60;
+const LEVEL1_CONFIRM_MS = 1200;
+const LEVEL2_CONFIRM_MS = 700;
 const LEVEL0_COOLDOWN_MS = 5000;
 const CRITICAL_CUE_INTERVAL_MS = 1300;
 
@@ -51,6 +54,10 @@ const state = {
   },
   sensorSamples: [],
   yawWindowDeg: [],
+  riskActiveSince: {
+    level1: null,
+    level2: null,
+  },
   lastLevel0At: 0,
   audioContext: null,
   lastCriticalCueAt: 0,
@@ -267,6 +274,7 @@ function calculateFeatures() {
     yawZeroCrossings: zeroCrossings(state.yawWindowDeg),
     mlLabel: mlResult.label,
     mlLevel: mlResult.level,
+    mlReady: state.sensorSamples.length >= MIN_ML_SAMPLES,
     mlFeatures: mlResult.features,
     samples: state.sensorSamples.length,
   };
@@ -274,23 +282,31 @@ function calculateFeatures() {
 
 function inferRisk(features) {
   const highSpeed = features.speedKmh >= 60;
-  const citySpeed = features.speedKmh >= 25;
-  const highLean = Math.abs(features.rollDeg) >= 35;
-  const heavyJerk = features.jerk >= 9;
+  const citySpeed = features.speedKmh >= 30;
+  const highLean = Math.abs(features.rollDeg) >= 38;
+  const heavyJerk = features.jerk >= 11;
   const unstableYaw =
-    features.yawRateRms >= 45 ||
-    features.yawRateVariance >= 900 ||
-    features.yawZeroCrossings >= 6;
-  const modelCritical = features.mlLabel === "critical_like";
-  const modelFatigue = features.mlLabel === "fatigue";
-
-  if (
+    features.yawRateRms >= 55 ||
+    features.yawRateVariance >= 1200 ||
+    features.yawZeroCrossings >= 8;
+  const movingEvidence =
+    features.speedKmh >= 8 ||
+    Math.abs(features.rollDeg) >= 12 ||
+    features.yawRateRms >= 18 ||
+    (features.mlFeatures?.absAccRms ?? 0) >= 11.8;
+  const modelCritical = features.mlReady && movingEvidence && features.mlLabel === "critical_like";
+  const modelFatigue = features.mlReady && movingEvidence && features.mlLabel === "fatigue";
+  const rawLevel2 =
     modelCritical ||
     (highSpeed && highLean) ||
     (citySpeed && highLean && heavyJerk) ||
     (highSpeed && unstableYaw) ||
-    (features.lateralGProxy >= 0.72 && citySpeed)
-  ) {
+    (features.lateralGProxy >= 0.78 && citySpeed);
+  const rawLevel1 =
+    modelFatigue ||
+    (citySpeed && (features.yawRateRms >= 30 || features.yawRateVariance >= 420));
+
+  if (confirmedRisk("level2", rawLevel2, LEVEL2_CONFIRM_MS)) {
     return {
       level: 2,
       key: "level2",
@@ -299,7 +315,7 @@ function inferRisk(features) {
     };
   }
 
-  if (modelFatigue || (citySpeed && (features.yawRateRms >= 22 || features.yawRateVariance >= 240))) {
+  if (confirmedRisk("level1", rawLevel1, LEVEL1_CONFIRM_MS)) {
     return {
       level: 1,
       key: "level1",
@@ -308,7 +324,7 @@ function inferRisk(features) {
     };
   }
 
-  if (features.jerk >= 5.5) {
+  if (features.jerk >= 7) {
     const now = Date.now();
     const inCooldown = now - state.lastLevel0At < LEVEL0_COOLDOWN_MS;
     if (!inCooldown) {
@@ -331,6 +347,21 @@ function inferRisk(features) {
   };
 }
 
+function confirmedRisk(key, active, durationMs) {
+  const now = Date.now();
+  if (!active) {
+    state.riskActiveSince[key] = null;
+    return false;
+  }
+
+  if (state.riskActiveSince[key] === null) {
+    state.riskActiveSince[key] = now;
+    return false;
+  }
+
+  return now - state.riskActiveSince[key] >= durationMs;
+}
+
 function render(features, risk) {
   app.dataset.risk = risk.key;
   ui.riskLevel.textContent = risk.key === "idle" ? "待命" : `Level ${risk.level}`;
@@ -342,7 +373,11 @@ function render(features, risk) {
   ui.jerk.textContent = features.jerk.toFixed(1);
   ui.yawRms.textContent = features.yawRateRms.toFixed(1);
   ui.mlLabel.textContent = features.samples ? labelText(features.mlLabel) : "--";
-  ui.mlConfidence.textContent = features.samples ? `${features.samples} samples` : "Decision Tree";
+  ui.mlConfidence.textContent = features.samples
+    ? features.mlReady
+      ? `${features.samples} samples`
+      : `warming ${features.samples}/${MIN_ML_SAMPLES}`
+    : "Decision Tree";
 
   if (risk.level === 2) {
     triggerCriticalCue();
