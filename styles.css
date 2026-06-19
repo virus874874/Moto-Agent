@@ -206,11 +206,23 @@ h1 {
   place-items: center;
   width: 52px;
   height: 52px;
+  min-height: 52px;
   border-radius: 8px;
+  padding: 0;
   background: #c3f400;
   color: #172000;
   font-size: 2rem;
   font-weight: 900;
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.turn-sign:active {
+  transform: scale(0.96);
+}
+
+.turn-sign:focus-visible {
+  outline: 2px solid rgba(245, 247, 237, 0.9);
+  outline-offset: 3px;
 }
 
 .destination-input {

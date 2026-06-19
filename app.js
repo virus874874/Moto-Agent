@@ -6,12 +6,12 @@ const MIN_ML_SAMPLES = 60;
 const MIN_LEVEL1_ML_SAMPLES = 100;
 const LEVEL1_CONFIRM_MS = 2200;
 const LEVEL2_CONFIRM_MS = 700;
-const LEVEL0_COOLDOWN_MS = 5000;
 const CRITICAL_CUE_INTERVAL_MS = 1300;
 const ROLL_DISPLAY_INTERVAL_MS = 1000;
 const JERK_DISPLAY_INTERVAL_MS = 1000;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
+const LEVEL2_RECOVERY_HOLD_MS = 1400;
 const DESTINATION_STORAGE_KEY = "motoAgentDestination";
 const JERK_COLOR_BANDS = [
   { zone: "calm", max: 4 },
@@ -27,6 +27,7 @@ const mountButtons = [...document.querySelectorAll(".mount-button")];
 
 const ui = {
   gpsState: document.querySelector("#gpsState"),
+  openMapsButton: document.querySelector("#openMapsButton"),
   destinationInput: document.querySelector("#destinationInput"),
   riskTitle: document.querySelector("#riskTitle"),
   speed: document.querySelector("#speed"),
@@ -65,7 +66,6 @@ const state = {
     level1: null,
     level2: null,
   },
-  lastLevel0At: 0,
   lastRollRenderAt: 0,
   lastJerkRenderAt: 0,
   displayedRisk: null,
@@ -80,6 +80,15 @@ ui.destinationInput.value = localStorage.getItem(DESTINATION_STORAGE_KEY) || "";
 ui.destinationInput.addEventListener("input", () => {
   localStorage.setItem(DESTINATION_STORAGE_KEY, ui.destinationInput.value.trim());
 });
+
+ui.destinationInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    openGoogleMapsNavigation();
+  }
+});
+
+ui.openMapsButton.addEventListener("click", openGoogleMapsNavigation);
 
 permissionButton.addEventListener("click", async () => {
   await primeAudio();
@@ -205,6 +214,33 @@ function estimateSpeedFromPosition(previous, current) {
   }
 
   return distanceMeters / deltaSeconds;
+}
+
+function openGoogleMapsNavigation() {
+  const destination = ui.destinationInput.value.trim();
+  if (!destination) {
+    ui.destinationInput.focus();
+    return;
+  }
+
+  localStorage.setItem(DESTINATION_STORAGE_KEY, destination);
+
+  const params = new URLSearchParams({
+    api: "1",
+    destination,
+    travelmode: "driving",
+  });
+
+  if (state.lastPosition) {
+    const { latitude, longitude } = state.lastPosition.coords;
+    params.set("origin", `${latitude},${longitude}`);
+  }
+
+  const mapsUrl = `https://www.google.com/maps/dir/?${params.toString()}`;
+  const opened = window.open(mapsUrl, "_blank", "noopener");
+  if (!opened) {
+    window.location.href = mapsUrl;
+  }
 }
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
@@ -365,21 +401,6 @@ function inferRisk(features) {
     };
   }
 
-  if (features.jerk >= 7) {
-    const now = Date.now();
-    const inCooldown = now - state.lastLevel0At < LEVEL0_COOLDOWN_MS;
-    if (!inCooldown) {
-      state.lastLevel0At = now;
-    }
-
-    return {
-      level: 0,
-      key: "level0",
-      title: "Level 0 平順度提醒",
-      message: inCooldown ? "平順度提示冷卻中，持續監測車身動態。" : "加減速變化偏大，建議放緩油門或煞車操作。",
-    };
-  }
-
   return {
     level: 0,
     key: state.hasSensorPermission ? "level0" : "idle",
@@ -420,13 +441,16 @@ function stabilizeRisk(nextRisk) {
     return currentRisk;
   }
 
-  if (!state.pendingRisk || state.pendingRisk.key !== nextRisk.key || state.pendingRisk.title !== nextRisk.title) {
+  if (!state.pendingRisk || !sameDisplayBand(state.pendingRisk, nextRisk)) {
     state.pendingRisk = nextRisk;
     state.pendingRiskSince = now;
     return currentRisk;
   }
 
-  if (now - state.pendingRiskSince >= RISK_DISPLAY_HOLD_MS) {
+  state.pendingRisk = nextRisk;
+  const holdMs = currentRisk.level === 2 && nextRisk.level < 2 ? LEVEL2_RECOVERY_HOLD_MS : RISK_DISPLAY_HOLD_MS;
+
+  if (now - state.pendingRiskSince >= holdMs) {
     state.displayedRisk = nextRisk;
     state.pendingRisk = null;
     state.pendingRiskSince = 0;
@@ -434,6 +458,10 @@ function stabilizeRisk(nextRisk) {
   }
 
   return currentRisk;
+}
+
+function sameDisplayBand(leftRisk, rightRisk) {
+  return leftRisk.level === rightRisk.level && leftRisk.key === rightRisk.key;
 }
 
 function render(features, risk) {
