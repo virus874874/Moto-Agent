@@ -225,6 +225,18 @@ h1 {
   outline-offset: 3px;
 }
 
+.turn-sign-multi {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  font-size: 1.08rem;
+}
+
+.turn-sign-multi span {
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
 .destination-input {
   display: block;
   width: 100%;

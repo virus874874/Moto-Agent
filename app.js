@@ -228,8 +228,9 @@ function openGoogleMapsNavigation() {
 
   const params = new URLSearchParams({
     api: "1",
+    dir_action: "navigate",
     destination,
-    travelmode: "driving",
+    travelmode: "two-wheeler",
   });
 
   if (state.lastPosition) {

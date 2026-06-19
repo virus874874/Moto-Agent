@@ -24,7 +24,11 @@
       <div class="route-line" aria-hidden="true"></div>
 
       <div class="nav-card">
-        <button id="openMapsButton" class="turn-sign" type="button" aria-label="開啟 Google Maps 導航">↱</button>
+        <button id="openMapsButton" class="turn-sign turn-sign-multi" type="button" aria-label="開啟機車導航">
+          <span>↰</span>
+          <span>↱</span>
+          <span>↶</span>
+        </button>
         <div>
           <p id="gpsState">GPS 待命</p>
           <input id="destinationInput" class="destination-input" type="text" inputmode="text" autocomplete="off" placeholder="輸入目的地">
