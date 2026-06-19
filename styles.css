@@ -211,18 +211,23 @@ h1 {
 }
 
 .speed-stage {
-  align-self: center;
-  justify-self: center;
-  width: min(100%, 420px);
-  text-align: center;
+  align-self: end;
+  justify-self: start;
+  width: min(100%, 390px);
+  margin-bottom: 8px;
+  padding: 12px 14px 14px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(11, 13, 13, 0.84), rgba(11, 13, 13, 0.36));
+  text-align: left;
+  backdrop-filter: blur(8px);
 }
 
 .speed-readout {
   position: relative;
   display: inline-flex;
   align-items: flex-end;
-  justify-content: center;
-  min-width: 220px;
+  justify-content: flex-start;
+  min-width: 180px;
 }
 
 .speed-readout output {
@@ -243,7 +248,7 @@ h1 {
 
 .speed-bar {
   height: 8px;
-  margin: 16px auto 0;
+  margin: 14px 0 0;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(245, 247, 237, 0.18);
@@ -403,6 +408,6 @@ h1 {
   }
 
   .speed-readout output {
-    font-size: 4.8rem;
+    font-size: 4.4rem;
   }
 }
