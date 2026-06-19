@@ -4,8 +4,9 @@ const SAMPLE_WINDOW_LIMIT = 160;
 const YAW_WINDOW_LIMIT = 80;
 const MIN_ML_SAMPLES = 60;
 const MIN_LEVEL1_ML_SAMPLES = 100;
+const MIN_LEVEL2_ML_SAMPLES = 120;
 const LEVEL1_CONFIRM_MS = 2200;
-const LEVEL2_CONFIRM_MS = 700;
+const LEVEL2_CONFIRM_MS = 1800;
 const CRITICAL_CUE_INTERVAL_MS = 1300;
 const ROLL_DISPLAY_INTERVAL_MS = 1000;
 const JERK_DISPLAY_INTERVAL_MS = 1000;
@@ -346,6 +347,7 @@ function calculateFeatures() {
     mlLevel: mlResult.level,
     mlReady: state.sensorSamples.length >= MIN_ML_SAMPLES,
     level1MlReady: state.sensorSamples.length >= MIN_LEVEL1_ML_SAMPLES,
+    level2MlReady: state.sensorSamples.length >= MIN_LEVEL2_ML_SAMPLES,
     mlFeatures: mlResult.features,
     samples: state.sensorSamples.length,
   };
@@ -354,12 +356,18 @@ function calculateFeatures() {
 function inferRisk(features) {
   const highSpeed = features.speedKmh >= 60;
   const citySpeed = features.speedKmh >= 30;
-  const highLean = Math.abs(features.rollDeg) >= 38;
-  const heavyJerk = features.jerk >= 11;
+  const highLean = Math.abs(features.rollDeg) >= 40;
+  const extremeLean = Math.abs(features.rollDeg) >= 46;
+  const heavyJerk = features.jerk >= 12;
+  const extremeJerk = features.jerk >= 18;
   const unstableYaw =
-    features.yawRateRms >= 55 ||
-    features.yawRateVariance >= 1200 ||
-    features.yawZeroCrossings >= 8;
+    features.yawRateRms >= 44 ||
+    features.yawRateVariance >= 760 ||
+    features.yawZeroCrossings >= 5;
+  const extremeYaw =
+    features.yawRateRms >= 68 ||
+    features.yawRateVariance >= 1700 ||
+    features.yawZeroCrossings >= 10;
   const movingEvidence =
     features.speedKmh >= 8 ||
     Math.abs(features.rollDeg) >= 12 ||
@@ -369,19 +377,30 @@ function inferRisk(features) {
     features.speedKmh >= 15 ||
     (Math.abs(features.rollDeg) >= 18 && features.yawRateRms >= 24) ||
     (features.yawRateRms >= 34 && (features.mlFeatures?.absAccRms ?? 0) >= 11.8);
-  const modelCritical = features.mlReady && movingEvidence && features.mlLabel === "critical_like";
+  const modelCritical = features.level2MlReady && movingEvidence && features.mlLabel === "critical_like";
   const modelFatigue = features.level1MlReady && level1RideEvidence && features.mlLabel === "fatigue";
+  const severeModelCritical =
+    modelCritical &&
+    (features.speedKmh >= 45 ||
+      extremeLean ||
+      extremeJerk ||
+      extremeYaw ||
+      (features.mlFeatures?.absAccRms ?? 0) >= 13.8);
   const rawLevel2 =
-    modelCritical ||
-    (highSpeed && highLean) ||
-    (citySpeed && highLean && heavyJerk) ||
-    (highSpeed && unstableYaw) ||
-    (features.lateralGProxy >= 0.78 && citySpeed);
+    severeModelCritical ||
+    (features.speedKmh >= 75 && highLean) ||
+    (highSpeed && extremeLean) ||
+    (features.speedKmh >= 45 && highLean && extremeJerk) ||
+    (highSpeed && extremeYaw) ||
+    (features.lateralGProxy >= 0.84 && features.speedKmh >= 45);
   const rawLevel1 =
+    modelCritical ||
     modelFatigue ||
-    (features.speedKmh >= 35 &&
-      ((features.yawRateRms >= 36 && features.yawZeroCrossings >= 3) ||
-        features.yawRateVariance >= 650));
+    (citySpeed && highLean) ||
+    (citySpeed && heavyJerk) ||
+    (features.speedKmh >= 28 &&
+      ((unstableYaw && features.yawZeroCrossings >= 3) ||
+        features.yawRateVariance >= 520));
 
   if (confirmedRisk("level2", rawLevel2, LEVEL2_CONFIRM_MS)) {
     return {
