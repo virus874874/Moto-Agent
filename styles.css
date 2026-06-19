@@ -81,8 +81,6 @@ button:disabled {
   min-height: 60px;
 }
 
-.eyebrow,
-.nav-card p,
 .metric span,
 .metric small {
   margin: 0;
@@ -121,7 +119,7 @@ h1 {
 .ride-canvas {
   position: relative;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
   gap: 12px;
   width: min(100%, 900px);
   min-height: 410px;
@@ -181,85 +179,11 @@ h1 {
   transform: rotate(38deg);
 }
 
-.nav-card,
 .function-row,
 .speed-stage,
 .risk-card {
   position: relative;
   z-index: 1;
-}
-
-.nav-card {
-  display: grid;
-  grid-template-columns: 52px 1fr;
-  gap: 12px;
-  align-items: center;
-  padding: 10px;
-  border: 2px solid #c3f400;
-  border-radius: 8px;
-  background: rgba(19, 19, 19, 0.84);
-  backdrop-filter: blur(12px);
-}
-
-.turn-sign {
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  min-height: 52px;
-  border-radius: 8px;
-  padding: 0;
-  background: #c3f400;
-  color: #172000;
-  font-size: 2rem;
-  font-weight: 900;
-  transition: box-shadow 120ms ease, transform 120ms ease;
-}
-
-.turn-sign:active {
-  transform: scale(0.96);
-}
-
-.turn-sign:focus-visible {
-  outline: 2px solid rgba(245, 247, 237, 0.9);
-  outline-offset: 3px;
-}
-
-.turn-sign-multi {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  font-size: 1.08rem;
-}
-
-.turn-sign-multi span {
-  display: grid;
-  place-items: center;
-  line-height: 1;
-}
-
-.destination-input {
-  display: block;
-  width: 100%;
-  margin-top: 3px;
-  border: 0;
-  border-bottom: 1px solid rgba(195, 244, 0, 0.36);
-  border-radius: 0;
-  padding: 4px 0 3px;
-  outline: none;
-  background: transparent;
-  color: #f5f7ed;
-  overflow-wrap: anywhere;
-  font: inherit;
-  font-size: 1.16rem;
-  font-weight: 900;
-}
-
-.destination-input::placeholder {
-  color: rgba(245, 247, 237, 0.58);
-}
-
-.destination-input:focus {
-  border-bottom-color: #c3f400;
 }
 
 .function-row {

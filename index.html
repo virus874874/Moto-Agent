@@ -13,8 +13,7 @@
   <main id="app" class="ride-shell" data-risk="idle">
     <header class="top-bar">
       <div>
-        <p class="eyebrow">MOTO-AGENT</p>
-        <h1>Edge Ride OS</h1>
+        <h1>Moto-Agent</h1>
       </div>
       <button id="permissionButton" class="pill-button primary" type="button">啟動感測器</button>
     </header>
@@ -22,18 +21,6 @@
     <section class="ride-canvas" aria-label="riding dashboard">
       <div class="map-grid" aria-hidden="true"></div>
       <div class="route-line" aria-hidden="true"></div>
-
-      <div class="nav-card">
-        <button id="openMapsButton" class="turn-sign turn-sign-multi" type="button" aria-label="開啟機車導航">
-          <span>↰</span>
-          <span>↱</span>
-          <span>↶</span>
-        </button>
-        <div>
-          <p id="gpsState">GPS 待命</p>
-          <input id="destinationInput" class="destination-input" type="text" inputmode="text" autocomplete="off" placeholder="輸入目的地">
-        </div>
-      </div>
 
       <div class="function-row" aria-label="mount and calibration controls">
         <div class="segmented-control" role="group" aria-label="手機固定位置">

@@ -13,7 +13,6 @@ const JERK_DISPLAY_INTERVAL_MS = 1000;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
 const LEVEL2_RECOVERY_HOLD_MS = 1400;
-const DESTINATION_STORAGE_KEY = "motoAgentDestination";
 const JERK_COLOR_BANDS = [
   { zone: "calm", max: 4 },
   { zone: "watch", max: 8 },
@@ -27,9 +26,6 @@ const calibrateButton = document.querySelector("#calibrateButton");
 const mountButtons = [...document.querySelectorAll(".mount-button")];
 
 const ui = {
-  gpsState: document.querySelector("#gpsState"),
-  openMapsButton: document.querySelector("#openMapsButton"),
-  destinationInput: document.querySelector("#destinationInput"),
   riskTitle: document.querySelector("#riskTitle"),
   speed: document.querySelector("#speed"),
   speedBar: document.querySelector("#speedBar"),
@@ -75,21 +71,6 @@ const state = {
   audioContext: null,
   lastCriticalCueAt: 0,
 };
-
-ui.destinationInput.value = localStorage.getItem(DESTINATION_STORAGE_KEY) || "";
-
-ui.destinationInput.addEventListener("input", () => {
-  localStorage.setItem(DESTINATION_STORAGE_KEY, ui.destinationInput.value.trim());
-});
-
-ui.destinationInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    openGoogleMapsNavigation();
-  }
-});
-
-ui.openMapsButton.addEventListener("click", openGoogleMapsNavigation);
 
 permissionButton.addEventListener("click", async () => {
   await primeAudio();
@@ -152,7 +133,6 @@ async function requestSensorPermission() {
 
 function requestGpsPermission() {
   if (!("geolocation" in navigator)) {
-    ui.gpsState.textContent = "GPS 不支援";
     writeLog("此環境不支援 geolocation。");
     return;
   }
@@ -160,7 +140,6 @@ function requestGpsPermission() {
   state.gpsWatchId = navigator.geolocation.watchPosition(
     handlePosition,
     (error) => {
-      ui.gpsState.textContent = "GPS 權限待確認";
       writeLog(`GPS 錯誤：${error.message}`);
     },
     {
@@ -197,7 +176,6 @@ function handlePosition(position) {
   }
 
   state.lastPosition = position;
-  ui.gpsState.textContent = `GPS ${Math.round(position.coords.accuracy)} m`;
   updateInference();
 }
 
@@ -215,34 +193,6 @@ function estimateSpeedFromPosition(previous, current) {
   }
 
   return distanceMeters / deltaSeconds;
-}
-
-function openGoogleMapsNavigation() {
-  const destination = ui.destinationInput.value.trim();
-  if (!destination) {
-    ui.destinationInput.focus();
-    return;
-  }
-
-  localStorage.setItem(DESTINATION_STORAGE_KEY, destination);
-
-  const params = new URLSearchParams({
-    api: "1",
-    dir_action: "navigate",
-    destination,
-    travelmode: "two-wheeler",
-  });
-
-  if (state.lastPosition) {
-    const { latitude, longitude } = state.lastPosition.coords;
-    params.set("origin", `${latitude},${longitude}`);
-  }
-
-  const mapsUrl = `https://www.google.com/maps/dir/?${params.toString()}`;
-  const opened = window.open(mapsUrl, "_blank", "noopener");
-  if (!opened) {
-    window.location.href = mapsUrl;
-  }
 }
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
