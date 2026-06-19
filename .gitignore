@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Generated web/native outputs
+www/
+android/
+ios/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# IDE local settings
+.idea/
+
+# Training outputs and local artifacts
+output/
+scratch/
+*.joblib
+*.pkl
+
+# Large raw datasets and archives kept locally
+doi-10.18419-darus-3301/
+doi-10.18419-darus-3301.zip
+archive.zip

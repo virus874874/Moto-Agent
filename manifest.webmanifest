@@ -1,0 +1,19 @@
+{
+  "name": "Moto-Agent",
+  "short_name": "MotoAgent",
+  "description": "Edge motorcycle telemetry warning app.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#101111",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

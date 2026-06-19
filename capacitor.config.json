@@ -1,0 +1,8 @@
+{
+  "appId": "tw.edu.ncku.motoagent",
+  "appName": "Moto-Agent",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
