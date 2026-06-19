@@ -16,12 +16,6 @@ const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
 const LEVEL2_RECOVERY_HOLD_MS = 1400;
-const JERK_COLOR_BANDS = [
-  { zone: "calm", max: 4 },
-  { zone: "watch", max: 8 },
-  { zone: "caution", max: 14 },
-  { zone: "high", max: Infinity },
-];
 
 const app = document.querySelector("#app");
 const permissionButton = document.querySelector("#permissionButton");
@@ -446,6 +440,7 @@ function render(features, risk) {
   ui.speedBar.style.width = `${Math.min(100, Math.max(4, (features.speedKmh / 120) * 100))}%`;
   renderRoll(features.rollDeg);
   renderJerk(features.jerk);
+  ui.jerkMetric.dataset.jerkLevel = risk.key === "idle" ? "level0" : risk.key;
 
   if (risk.level === 2) {
     triggerCriticalCue();
@@ -464,11 +459,6 @@ function renderJerk(jerk) {
   if (now - state.lastJerkRenderAt < JERK_DISPLAY_INTERVAL_MS) return;
   state.lastJerkRenderAt = now;
   ui.jerk.textContent = jerk.toFixed(1);
-  ui.jerkMetric.dataset.jerkZone = jerkZone(jerk);
-}
-
-function jerkZone(jerk) {
-  return JERK_COLOR_BANDS.find((band) => jerk < band.max)?.zone ?? "high";
 }
 
 async function primeAudio() {
