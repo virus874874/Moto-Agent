@@ -213,11 +213,29 @@ h1 {
   font-weight: 900;
 }
 
-.nav-card strong {
+.destination-input {
   display: block;
+  width: 100%;
   margin-top: 3px;
+  border: 0;
+  border-bottom: 1px solid rgba(195, 244, 0, 0.36);
+  border-radius: 0;
+  padding: 4px 0 3px;
+  outline: none;
+  background: transparent;
+  color: #f5f7ed;
   overflow-wrap: anywhere;
+  font: inherit;
   font-size: 1.16rem;
+  font-weight: 900;
+}
+
+.destination-input::placeholder {
+  color: rgba(245, 247, 237, 0.58);
+}
+
+.destination-input:focus {
+  border-bottom-color: #c3f400;
 }
 
 .function-row {

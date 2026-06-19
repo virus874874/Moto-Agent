@@ -11,6 +11,8 @@ const CRITICAL_CUE_INTERVAL_MS = 1300;
 const ROLL_DISPLAY_INTERVAL_MS = 1000;
 const JERK_DISPLAY_INTERVAL_MS = 1000;
 const ORIENTATION_LOCK = "portrait";
+const RISK_DISPLAY_HOLD_MS = 2500;
+const DESTINATION_STORAGE_KEY = "motoAgentDestination";
 const JERK_COLOR_BANDS = [
   { zone: "calm", max: 4 },
   { zone: "watch", max: 8 },
@@ -25,7 +27,7 @@ const mountButtons = [...document.querySelectorAll(".mount-button")];
 
 const ui = {
   gpsState: document.querySelector("#gpsState"),
-  routeHint: document.querySelector("#routeHint"),
+  destinationInput: document.querySelector("#destinationInput"),
   riskTitle: document.querySelector("#riskTitle"),
   speed: document.querySelector("#speed"),
   speedBar: document.querySelector("#speedBar"),
@@ -66,9 +68,18 @@ const state = {
   lastLevel0At: 0,
   lastRollRenderAt: 0,
   lastJerkRenderAt: 0,
+  displayedRisk: null,
+  pendingRisk: null,
+  pendingRiskSince: 0,
   audioContext: null,
   lastCriticalCueAt: 0,
 };
+
+ui.destinationInput.value = localStorage.getItem(DESTINATION_STORAGE_KEY) || "";
+
+ui.destinationInput.addEventListener("input", () => {
+  localStorage.setItem(DESTINATION_STORAGE_KEY, ui.destinationInput.value.trim());
+});
 
 permissionButton.addEventListener("click", async () => {
   await primeAudio();
@@ -271,7 +282,7 @@ function handleMotion(event) {
 
 function updateInference() {
   const features = calculateFeatures();
-  const risk = inferRisk(features);
+  const risk = stabilizeRisk(inferRisk(features));
   render(features, risk);
 }
 
@@ -390,6 +401,39 @@ function confirmedRisk(key, active, durationMs) {
   }
 
   return now - state.riskActiveSince[key] >= durationMs;
+}
+
+function stabilizeRisk(nextRisk) {
+  const now = Date.now();
+  const currentRisk = state.displayedRisk;
+
+  if (!currentRisk || currentRisk.key === "idle" || nextRisk.level > currentRisk.level) {
+    state.displayedRisk = nextRisk;
+    state.pendingRisk = null;
+    state.pendingRiskSince = 0;
+    return nextRisk;
+  }
+
+  if (nextRisk.key === currentRisk.key && nextRisk.title === currentRisk.title) {
+    state.pendingRisk = null;
+    state.pendingRiskSince = 0;
+    return currentRisk;
+  }
+
+  if (!state.pendingRisk || state.pendingRisk.key !== nextRisk.key || state.pendingRisk.title !== nextRisk.title) {
+    state.pendingRisk = nextRisk;
+    state.pendingRiskSince = now;
+    return currentRisk;
+  }
+
+  if (now - state.pendingRiskSince >= RISK_DISPLAY_HOLD_MS) {
+    state.displayedRisk = nextRisk;
+    state.pendingRisk = null;
+    state.pendingRiskSince = 0;
+    return nextRisk;
+  }
+
+  return currentRisk;
 }
 
 function render(features, risk) {

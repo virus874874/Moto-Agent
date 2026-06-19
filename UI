@@ -27,7 +27,7 @@
         <div class="turn-sign">↱</div>
         <div>
           <p id="gpsState">GPS 待命</p>
-          <strong id="routeHint">台南市區測試模式</strong>
+          <input id="destinationInput" class="destination-input" type="text" inputmode="text" autocomplete="off" placeholder="輸入目的地">
         </div>
       </div>
 
