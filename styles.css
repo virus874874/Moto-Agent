@@ -156,20 +156,24 @@ h1 {
   transform: translateX(-50%) rotate(8deg);
 }
 
-.route-line::before,
+.route-line::before {
+  position: absolute;
+  content: "";
+  left: -34px;
+  top: 34%;
+  width: 84px;
+  height: 190px;
+  border-radius: 999px;
+  background: rgba(13, 15, 15, 0.9);
+  box-shadow: 0 0 24px rgba(13, 15, 15, 0.82);
+}
+
 .route-line::after {
   position: absolute;
   content: "";
   width: 16px;
   border-radius: 999px;
   background: #c3f400;
-}
-
-.route-line::before {
-  top: 26%;
-  left: -38px;
-  height: 170px;
-  transform: rotate(-42deg);
 }
 
 .route-line::after {
@@ -211,23 +215,18 @@ h1 {
 }
 
 .speed-stage {
-  align-self: end;
-  justify-self: start;
-  width: min(100%, 390px);
-  margin-bottom: 8px;
-  padding: 12px 14px 14px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, rgba(11, 13, 13, 0.84), rgba(11, 13, 13, 0.36));
-  text-align: left;
-  backdrop-filter: blur(8px);
+  align-self: center;
+  justify-self: center;
+  width: min(100%, 420px);
+  text-align: center;
 }
 
 .speed-readout {
   position: relative;
   display: inline-flex;
   align-items: flex-end;
-  justify-content: flex-start;
-  min-width: 180px;
+  justify-content: center;
+  min-width: 220px;
 }
 
 .speed-readout output {
@@ -248,7 +247,7 @@ h1 {
 
 .speed-bar {
   height: 8px;
-  margin: 14px 0 0;
+  margin: 16px auto 0;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(245, 247, 237, 0.18);
@@ -408,6 +407,6 @@ h1 {
   }
 
   .speed-readout output {
-    font-size: 4.4rem;
+    font-size: 4.8rem;
   }
 }
