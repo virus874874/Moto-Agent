@@ -3,10 +3,18 @@ import { classifyMotoRisk } from "./aerox_ml_rules.js";
 const SAMPLE_WINDOW_LIMIT = 160;
 const YAW_WINDOW_LIMIT = 80;
 const MIN_ML_SAMPLES = 60;
-const LEVEL1_CONFIRM_MS = 1200;
+const MIN_LEVEL1_ML_SAMPLES = 100;
+const LEVEL1_CONFIRM_MS = 2200;
 const LEVEL2_CONFIRM_MS = 700;
 const LEVEL0_COOLDOWN_MS = 5000;
 const CRITICAL_CUE_INTERVAL_MS = 1300;
+const ROLL_DISPLAY_INTERVAL_MS = 1000;
+const JERK_COLOR_BANDS = [
+  { zone: "calm", max: 4 },
+  { zone: "watch", max: 8 },
+  { zone: "caution", max: 14 },
+  { zone: "high", max: Infinity },
+];
 
 const app = document.querySelector("#app");
 const permissionButton = document.querySelector("#permissionButton");
@@ -17,16 +25,12 @@ const logBox = document.querySelector("#log");
 const ui = {
   gpsState: document.querySelector("#gpsState"),
   routeHint: document.querySelector("#routeHint"),
-  riskLevel: document.querySelector("#riskLevel"),
   riskTitle: document.querySelector("#riskTitle"),
-  riskMessage: document.querySelector("#riskMessage"),
   speed: document.querySelector("#speed"),
   speedBar: document.querySelector("#speedBar"),
   roll: document.querySelector("#roll"),
+  jerkMetric: document.querySelector("#jerkMetric"),
   jerk: document.querySelector("#jerk"),
-  yawRms: document.querySelector("#yawRms"),
-  mlLabel: document.querySelector("#mlLabel"),
-  mlConfidence: document.querySelector("#mlConfidence"),
 };
 
 const state = {
@@ -59,6 +63,7 @@ const state = {
     level2: null,
   },
   lastLevel0At: 0,
+  lastRollRenderAt: 0,
   audioContext: null,
   lastCriticalCueAt: 0,
 };
@@ -275,6 +280,7 @@ function calculateFeatures() {
     mlLabel: mlResult.label,
     mlLevel: mlResult.level,
     mlReady: state.sensorSamples.length >= MIN_ML_SAMPLES,
+    level1MlReady: state.sensorSamples.length >= MIN_LEVEL1_ML_SAMPLES,
     mlFeatures: mlResult.features,
     samples: state.sensorSamples.length,
   };
@@ -294,8 +300,12 @@ function inferRisk(features) {
     Math.abs(features.rollDeg) >= 12 ||
     features.yawRateRms >= 18 ||
     (features.mlFeatures?.absAccRms ?? 0) >= 11.8;
+  const level1RideEvidence =
+    features.speedKmh >= 15 ||
+    (Math.abs(features.rollDeg) >= 18 && features.yawRateRms >= 24) ||
+    (features.yawRateRms >= 34 && (features.mlFeatures?.absAccRms ?? 0) >= 11.8);
   const modelCritical = features.mlReady && movingEvidence && features.mlLabel === "critical_like";
-  const modelFatigue = features.mlReady && movingEvidence && features.mlLabel === "fatigue";
+  const modelFatigue = features.level1MlReady && level1RideEvidence && features.mlLabel === "fatigue";
   const rawLevel2 =
     modelCritical ||
     (highSpeed && highLean) ||
@@ -304,7 +314,9 @@ function inferRisk(features) {
     (features.lateralGProxy >= 0.78 && citySpeed);
   const rawLevel1 =
     modelFatigue ||
-    (citySpeed && (features.yawRateRms >= 30 || features.yawRateVariance >= 420));
+    (features.speedKmh >= 35 &&
+      ((features.yawRateRms >= 36 && features.yawZeroCrossings >= 3) ||
+        features.yawRateVariance >= 650));
 
   if (confirmedRisk("level2", rawLevel2, LEVEL2_CONFIRM_MS)) {
     return {
@@ -364,32 +376,27 @@ function confirmedRisk(key, active, durationMs) {
 
 function render(features, risk) {
   app.dataset.risk = risk.key;
-  ui.riskLevel.textContent = risk.key === "idle" ? "待命" : `Level ${risk.level}`;
   ui.riskTitle.textContent = risk.title;
-  ui.riskMessage.textContent = risk.message;
   ui.speed.textContent = features.speedKmh > 0 ? features.speedKmh.toFixed(0) : "--";
   ui.speedBar.style.width = `${Math.min(100, Math.max(4, (features.speedKmh / 120) * 100))}%`;
-  ui.roll.textContent = features.rollDeg.toFixed(1);
+  renderRoll(features.rollDeg);
   ui.jerk.textContent = features.jerk.toFixed(1);
-  ui.yawRms.textContent = features.yawRateRms.toFixed(1);
-  ui.mlLabel.textContent = features.samples ? labelText(features.mlLabel) : "--";
-  ui.mlConfidence.textContent = features.samples
-    ? features.mlReady
-      ? `${features.samples} samples`
-      : `warming ${features.samples}/${MIN_ML_SAMPLES}`
-    : "Decision Tree";
+  ui.jerkMetric.dataset.jerkZone = jerkZone(features.jerk);
 
   if (risk.level === 2) {
     triggerCriticalCue();
   }
 }
 
-function labelText(label) {
-  return {
-    normal: "normal",
-    fatigue: "fatigue",
-    critical_like: "critical",
-  }[label] ?? label;
+function renderRoll(rollDeg) {
+  const now = Date.now();
+  if (now - state.lastRollRenderAt < ROLL_DISPLAY_INTERVAL_MS) return;
+  state.lastRollRenderAt = now;
+  ui.roll.textContent = rollDeg.toFixed(1);
+}
+
+function jerkZone(jerk) {
+  return JERK_COLOR_BANDS.find((band) => jerk < band.max)?.zone ?? "high";
 }
 
 async function primeAudio() {

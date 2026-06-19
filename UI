@@ -50,9 +50,7 @@
       </section>
 
       <section class="risk-card" aria-live="polite">
-        <p id="riskLevel">待命</p>
         <h2 id="riskTitle">尚未啟動</h2>
-        <span id="riskMessage">請先啟動感測器、GPS，並完成歸零校正。</span>
       </section>
     </section>
 
@@ -62,20 +60,10 @@
         <strong id="roll">--</strong>
         <small>deg</small>
       </article>
-      <article class="metric">
+      <article id="jerkMetric" class="metric" data-jerk-zone="calm">
         <span>Jerk</span>
         <strong id="jerk">--</strong>
         <small>m/s³</small>
-      </article>
-      <article class="metric">
-        <span>Yaw RMS</span>
-        <strong id="yawRms">--</strong>
-        <small>deg/s</small>
-      </article>
-      <article class="metric">
-        <span>ML Label</span>
-        <strong id="mlLabel">--</strong>
-        <small id="mlConfidence">Decision Tree</small>
       </article>
     </section>
 

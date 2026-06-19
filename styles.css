@@ -84,7 +84,6 @@ button:disabled {
 
 .eyebrow,
 .nav-card p,
-.risk-card p,
 .metric span,
 .metric small {
   margin: 0;
@@ -296,8 +295,10 @@ h1 {
 }
 
 .risk-card {
-  min-height: 116px;
-  padding: 16px;
+  display: grid;
+  align-items: center;
+  min-height: 82px;
+  padding: 14px 16px;
   border: 1px solid rgba(245, 247, 237, 0.16);
   border-radius: 8px;
   background: rgba(19, 19, 19, 0.86);
@@ -305,17 +306,11 @@ h1 {
 }
 
 .risk-card h2 {
-  margin-top: 4px;
+  margin-top: 0;
+  overflow-wrap: anywhere;
   color: #c3f400;
   font-size: 1.9rem;
   line-height: 1.08;
-}
-
-.risk-card span {
-  display: block;
-  margin-top: 8px;
-  color: rgba(245, 247, 237, 0.84);
-  line-height: 1.45;
 }
 
 .metrics-grid {
@@ -332,6 +327,7 @@ h1 {
   border: 1px solid rgba(245, 247, 237, 0.14);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.24);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
 
 .metric strong {
@@ -340,11 +336,45 @@ h1 {
   overflow-wrap: anywhere;
   font-size: 1.7rem;
   line-height: 1;
+  transition: color 160ms ease, text-shadow 160ms ease;
 }
 
 .metric small {
   display: block;
   margin-top: 7px;
+}
+
+.metric[data-jerk-zone="calm"] strong {
+  color: #c3f400;
+}
+
+.metric[data-jerk-zone="watch"] {
+  border-color: rgba(255, 211, 77, 0.42);
+  background: rgba(109, 82, 0, 0.28);
+}
+
+.metric[data-jerk-zone="watch"] strong {
+  color: #ffd34d;
+}
+
+.metric[data-jerk-zone="caution"] {
+  border-color: rgba(255, 145, 51, 0.54);
+  background: rgba(116, 49, 0, 0.32);
+}
+
+.metric[data-jerk-zone="caution"] strong {
+  color: #ff9133;
+}
+
+.metric[data-jerk-zone="high"] {
+  border-color: rgba(255, 73, 98, 0.64);
+  background: rgba(126, 0, 26, 0.34);
+  box-shadow: 0 0 18px rgba(255, 73, 98, 0.16);
+}
+
+.metric[data-jerk-zone="high"] strong {
+  color: #ff4962;
+  text-shadow: 0 0 16px rgba(255, 73, 98, 0.28);
 }
 
 .bottom-nav {
