@@ -22,7 +22,6 @@ const app = document.querySelector("#app");
 const permissionButton = document.querySelector("#permissionButton");
 const calibrateButton = document.querySelector("#calibrateButton");
 const mountButtons = [...document.querySelectorAll(".mount-button")];
-const logBox = document.querySelector("#log");
 
 const ui = {
   gpsState: document.querySelector("#gpsState"),
@@ -510,7 +509,7 @@ function numberOr(value, fallback) {
 
 function writeLog(message) {
   const time = new Date().toLocaleTimeString("zh-TW", { hour12: false });
-  logBox.textContent = `[${time}] ${message}\n${logBox.textContent}`;
+  console.info(`[${time}] ${message}`);
 }
 
 updateInference();

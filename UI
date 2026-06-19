@@ -79,11 +79,6 @@
         </svg>
       </button>
     </nav>
-
-    <section class="log-panel" aria-label="system status">
-      <h2>系統狀態</h2>
-      <pre id="log">等待啟動...</pre>
-    </section>
   </main>
 
   <script>
