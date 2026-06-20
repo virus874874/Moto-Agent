@@ -22,7 +22,7 @@ https://virus874874.github.io/Moto-Agent/
 - 使用 DeviceMotion / DeviceOrientation 取得 IMU 資料
 - 即時顯示速度、傾角與 Jerk
 - 使用 Aerox 感測器資料訓練出的 JavaScript 決策樹做本機推論
-- 風險狀態包含 Level 0、Level 1 Swing、Level 1 Urgent、Level 2
+- 風險狀態包含 Level 0、Level 1 疲勞晃動、Level 2
 
 ## Risk Levels
 
@@ -31,10 +31,10 @@ https://virus874874.github.io/Moto-Agent/
 一般穩定狀態。  
 此時 Jerk 卡片為綠色。
 
-### Level 1 Swing
+### Level 1 疲勞晃動
 
 代表連續晃動或蛇行傾向。  
-原本 Level 1 的晃動條件需要連續達成 `3 秒` 才會顯示 Swing；若不符合該狀況，約 `1 秒` 後回到 Level 0。
+Level 1 條件需要連續達成約 `2.2 秒` 才會顯示。
 
 主要參考：
 
@@ -44,31 +44,10 @@ https://virus874874.github.io/Moto-Agent/
 - 中速以上高 Jerk
 - yaw RMS / yaw variance / yaw zero crossings 偏高
 
-### Level 1 Urgent
-
-代表緊急重煞或嚴重頓挫。  
-使用速度動態補償門檻：
-
-```js
-threshold = 5.0 - speedKmh * 0.02;
-if (threshold < 2.5) threshold = 2.5;
-```
-
-符合任一條件即觸發：
-
-- `absAccMax >= threshold`
-- `absAccVar >= 1.5`
-
 ### Level 2 高風險
 
-代表極限重煞、碰撞風險或高風險動態。  
-重煞/碰撞紅標條件：
-
-- `absAccMax >= 6.0`
-- 或 `absAccVar >= 10`
-
-其他高風險條件會再綜合速度、傾角、Jerk、yaw 與 ML `critical_like` 判斷；yaw 類紅標需伴隨明顯車身傾角，避免單純轉龍頭誤觸。  
-為避免慢速待轉誤判，Level 2 的一般動態風險有最低速度保護。
+代表高風險動態。  
+Level 2 條件需要連續達成約 `1.8 秒` 才會顯示，主要綜合速度、傾角、Jerk、yaw 與 ML `critical_like` 判斷。
 
 ## Machine Learning
 
