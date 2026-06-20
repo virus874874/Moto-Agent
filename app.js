@@ -16,9 +16,9 @@ const LEVEL2_JERK_THRESHOLD = 700;
 const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
-const LEVEL2_RECOVERY_HOLD_MS = 1400;
+const LEVEL2_RECOVERY_HOLD_MS = 1000;
 const HARD_BRAKE_RED_ACC_MAX = 6.0;
-const HARD_BRAKE_RED_ACC_VAR = 4.5;
+const HARD_BRAKE_RED_ACC_VAR = 10;
 const HARD_BRAKE_YELLOW_ACC_VAR = 1.5;
 const HARD_BRAKE_DYNAMIC_BASE = 5.0;
 const HARD_BRAKE_DYNAMIC_SPEED_FACTOR = 0.02;
@@ -342,31 +342,33 @@ function inferRisk(features) {
     features.yawRateRms >= 68 ||
     features.yawRateVariance >= 1700 ||
     features.yawZeroCrossings >= 10;
+  const absAccRms = features.mlFeatures?.absAccRms ?? 0;
+  const yawWithBodyLean = extremeYaw && Math.abs(features.rollDeg) >= 32;
+  const level2JerkEvidence = extremeJerk && (highLean || hardBrakeYellow || absAccRms >= 13.2);
   const movingEvidence =
     features.speedKmh >= 8 ||
     Math.abs(features.rollDeg) >= 12 ||
     features.yawRateRms >= 18 ||
-    (features.mlFeatures?.absAccRms ?? 0) >= 11.8;
+    absAccRms >= 11.8;
   const level1RideEvidence =
     features.speedKmh >= 15 ||
     (Math.abs(features.rollDeg) >= 18 && features.yawRateRms >= 24) ||
-    (features.yawRateRms >= 34 && (features.mlFeatures?.absAccRms ?? 0) >= 11.8);
+    (features.yawRateRms >= 34 && absAccRms >= 11.8);
   const modelCritical = features.level2MlReady && movingEvidence && features.mlLabel === "critical_like";
   const modelFatigue = features.level1MlReady && level1RideEvidence && features.mlLabel === "fatigue";
   const severeModelCritical =
     modelCritical &&
-    (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD ||
-      extremeLean ||
-      extremeJerk ||
-      extremeYaw ||
-      (features.mlFeatures?.absAccRms ?? 0) >= 13.8);
+    (extremeLean ||
+      level2JerkEvidence ||
+      yawWithBodyLean ||
+      absAccRms >= 13.8);
   const rawLevel2 =
     level2Speed &&
     (severeModelCritical ||
       (features.speedKmh >= 75 && highLean) ||
       (highSpeed && extremeLean) ||
       (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD && highLean && extremeJerk) ||
-      (highSpeed && extremeYaw) ||
+      (highSpeed && yawWithBodyLean) ||
       (features.lateralGProxy >= 0.84 && features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD));
   const rawSwing =
     modelCritical ||

@@ -65,9 +65,9 @@ if (threshold < 2.5) threshold = 2.5;
 重煞/碰撞紅標條件：
 
 - `absAccMax >= 6.0`
-- 或 `absAccVar >= 4.5`
+- 或 `absAccVar >= 10`
 
-其他高風險條件會再綜合速度、傾角、Jerk、yaw 與 ML `critical_like` 判斷。  
+其他高風險條件會再綜合速度、傾角、Jerk、yaw 與 ML `critical_like` 判斷；yaw 類紅標需伴隨明顯車身傾角，避免單純轉龍頭誤觸。  
 為避免慢速待轉誤判，Level 2 的一般動態風險有最低速度保護。
 
 ## Machine Learning
