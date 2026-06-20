@@ -14,6 +14,9 @@ const LEVEL1_JERK_THRESHOLD = 500;
 const LEVEL2_JERK_THRESHOLD = 700;
 const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
 const LEVEL2_OVERSPEED_KMH = 80;
+const LEVEL2_MODEL_LEAN_DEG = 32;
+const LEVEL2_MODEL_YAW_RMS = 58;
+const LEVEL2_MODEL_ABS_ACC_RMS = 13.8;
 const LEVEL1_RELEASE_HOLD_MS = 500;
 const SWING_MIN_YAW_ZERO_CROSSINGS = 5;
 const SWING_YAW_VARIANCE_THRESHOLD = 650;
@@ -432,11 +435,13 @@ function inferRisk(features) {
   const modelFatigue = features.level1MlReady && level1RideEvidence && features.mlLabel === "fatigue";
   const severeModelCritical =
     modelCritical &&
-    (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD ||
-      extremeLean ||
+    (extremeLean ||
       extremeJerk ||
       extremeYaw ||
-      (features.mlFeatures?.absAccRms ?? 0) >= 13.8);
+      (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD &&
+        (Math.abs(features.rollDeg) >= LEVEL2_MODEL_LEAN_DEG ||
+          features.yawRateRms >= LEVEL2_MODEL_YAW_RMS ||
+          (features.mlFeatures?.absAccRms ?? 0) >= LEVEL2_MODEL_ABS_ACC_RMS)));
   const rawLevel2 =
     overspeed ||
     (level2Speed &&

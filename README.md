@@ -88,6 +88,7 @@ Surge 主要提高：
 Level 2 條件需要連續達成約 `1.8 秒` 才會顯示。
 速度 `> 80 km/h` 時顯示 `Level 2 Overspeed`；其他 Level 2 觸發則顯示 `Level 2 Reckless Driving`。
 Reckless Driving 主要綜合速度、傾角、Jerk、yaw 與 ML `critical_like` 判斷。
+穩定巡航超過 `60 km/h` 不會單獨觸發 Reckless Driving；需同時伴隨大傾角、極端 Jerk、極端 yaw 或高加速度 RMS。
 
 ## Machine Learning
 
