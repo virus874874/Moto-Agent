@@ -22,7 +22,7 @@ https://virus874874.github.io/Moto-Agent/
 - 使用 DeviceMotion / DeviceOrientation 取得 IMU 資料
 - 即時顯示速度、傾角與 Jerk
 - 使用 Aerox 感測器資料訓練出的 JavaScript 決策樹做本機推論
-- 風險狀態包含 Level 0、Level 1 Plommet、Level 1 Swing、Level 2
+- 風險狀態包含 Level 0、Level 1 Plommet、Level 1 Surge、Level 1 Swing、Level 2
 
 ## Risk Levels
 
@@ -52,6 +52,7 @@ Yaw 類 Swing 需要更明確的連續左右擺動，避免龍頭來回一次就
 Plommet 使用不含重力的 body acceleration；若手機沒有提供該資料，則以 `accelerationIncludingGravity - 9.80665` 近似補償。
 為了避免行車碎震誤判，Plommet 會使用低通平滑後的 body acceleration，並要求條件持續約 `0.7 秒`。
 若 Plommet 與 Swing 同時成立，App 會先顯示 `Level 1 Plommet` 約 `1 秒`，之後若 Swing 仍成立會立刻回到 `Level 1 Swing`，不會重新計算 Swing 的確認時間。
+Plommet 會用 GPS 速度差輔助判斷方向；若速度趨勢明確上升，會改交給 Surge 的高門檻判斷。
 
 動態門檻：
 
@@ -65,7 +66,21 @@ if (threshold < 3.5) threshold = 3.5;
 - 速度 `>= 25 km/h`，且最近 `0.8 秒` 內至少 `6` 筆平滑後 body acceleration `>= threshold`，且達標比例 `>= 55%`
 - 速度 `>= 35 km/h`，且平滑後 body jerk `>= 500`，最近 `0.8 秒` 內平滑後 body acceleration 最大值 `>= threshold * 1.25`，且達標比例 `>= 27.5%`
 
-Level 1 的 Swing / Plommet 特徵消失後，約 `0.5 秒` 內會切回目前狀態。
+Level 1 的 Swing / Plommet / Surge 特徵消失後，約 `0.5 秒` 內會切回目前狀態。
+
+### Level 1 Surge
+
+代表短時間明顯急加速。  
+Surge 會先使用與 Plommet 相同的縱向變化偵測，再要求 GPS 速度趨勢為上升，最後以較高門檻審核後才顯示。
+
+Surge 主要提高：
+
+- 平滑後 body acceleration 門檻為 Plommet 的 `1.35` 倍
+- 至少 `7` 筆達標
+- 達標比例 `>= 70%`
+- Jerk 輔助條件需速度 `>= 40 km/h`
+
+若 Surge 與 Swing 同時成立，App 會先顯示 `Level 1 Surge` 約 `1 秒`，之後若 Swing 仍成立會立刻回到 `Level 1 Swing`，不會重新計算 Swing 的確認時間。
 
 ### Level 2 高風險
 

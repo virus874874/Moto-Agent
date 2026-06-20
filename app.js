@@ -17,18 +17,27 @@ const LEVEL2_OVERSPEED_KMH = 80;
 const LEVEL1_RELEASE_HOLD_MS = 500;
 const SWING_MIN_YAW_ZERO_CROSSINGS = 5;
 const SWING_YAW_VARIANCE_THRESHOLD = 650;
-const URGENT_OVERLAY_MS = 1000;
-const URGENT_WINDOW_MS = 800;
-const URGENT_CONFIRM_MS = 700;
-const URGENT_MIN_SPEED_KMH = 25;
-const URGENT_MIN_HITS = 6;
-const URGENT_MIN_RATIO = 0.55;
-const URGENT_JERK_MIN_SPEED_KMH = 35;
-const URGENT_JERK_ACCELERATION_FACTOR = 1.25;
-const URGENT_DYNAMIC_BASE = 5.8;
-const URGENT_DYNAMIC_SPEED_FACTOR = 0.015;
-const URGENT_DYNAMIC_MIN = 3.5;
-const URGENT_SMOOTHING_ALPHA = 0.12;
+const LEVEL1_TRANSIENT_OVERLAY_MS = 1000;
+const SPEED_TREND_FRESH_MS = 3000;
+const SPEED_TREND_DELTA_KMH = 0.8;
+const SPEED_TREND_RATE_KMHPS = 0.7;
+const PLOMMET_WINDOW_MS = 800;
+const PLOMMET_CONFIRM_MS = 700;
+const PLOMMET_MIN_SPEED_KMH = 25;
+const PLOMMET_MIN_HITS = 6;
+const PLOMMET_MIN_RATIO = 0.55;
+const PLOMMET_JERK_MIN_SPEED_KMH = 35;
+const PLOMMET_JERK_ACCELERATION_FACTOR = 1.25;
+const PLOMMET_DYNAMIC_BASE = 5.8;
+const PLOMMET_DYNAMIC_SPEED_FACTOR = 0.015;
+const PLOMMET_DYNAMIC_MIN = 3.5;
+const PLOMMET_SMOOTHING_ALPHA = 0.12;
+const SURGE_MIN_SPEED_KMH = 30;
+const SURGE_MIN_HITS = 7;
+const SURGE_MIN_RATIO = 0.7;
+const SURGE_JERK_MIN_SPEED_KMH = 40;
+const SURGE_JERK_ACCELERATION_FACTOR = 1.55;
+const SURGE_THRESHOLD_FACTOR = 1.35;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
 const LEVEL2_RECOVERY_HOLD_MS = 1400;
@@ -52,6 +61,9 @@ const state = {
   hasGpsPermission: false,
   gpsWatchId: null,
   speedMps: 0,
+  speedDeltaKmh: 0,
+  speedChangeRateKmhps: 0,
+  speedTrendUpdatedAt: 0,
   lastPosition: null,
   mountMode: "handlebar",
   orientation: {
@@ -77,7 +89,8 @@ const state = {
   sensorSamples: [],
   yawWindowDeg: [],
   riskActiveSince: {
-    urgent: null,
+    plommet: null,
+    surge: null,
     level1: null,
     level2: null,
   },
@@ -86,8 +99,9 @@ const state = {
   displayedRisk: null,
   pendingRisk: null,
   pendingRiskSince: 0,
-  urgentOverlayUntil: 0,
-  urgentOverlayConsumed: false,
+  level1TransientOverlayUntil: 0,
+  level1TransientOverlayConsumed: false,
+  level1TransientOverlayKey: "",
   audioContext: null,
   lastCriticalCueAt: 0,
 };
@@ -188,13 +202,26 @@ async function lockScreenOrientation() {
 function handlePosition(position) {
   state.hasGpsPermission = true;
   const speedFromGps = position.coords.speed;
+  const previousSpeedMps = state.speedMps;
+  const previousTimestamp = state.lastPosition?.timestamp;
+  let nextSpeedMps = state.speedMps;
 
   if (typeof speedFromGps === "number" && Number.isFinite(speedFromGps)) {
-    state.speedMps = Math.max(0, speedFromGps);
+    nextSpeedMps = Math.max(0, speedFromGps);
   } else if (state.lastPosition) {
-    state.speedMps = estimateSpeedFromPosition(state.lastPosition, position);
+    nextSpeedMps = estimateSpeedFromPosition(state.lastPosition, position);
   }
 
+  if (typeof previousTimestamp === "number") {
+    const deltaSeconds = (position.timestamp - previousTimestamp) / 1000;
+    if (deltaSeconds > 0) {
+      state.speedDeltaKmh = (nextSpeedMps - previousSpeedMps) * 3.6;
+      state.speedChangeRateKmhps = state.speedDeltaKmh / deltaSeconds;
+      state.speedTrendUpdatedAt = Date.now();
+    }
+  }
+
+  state.speedMps = nextSpeedMps;
   state.lastPosition = position;
   updateInference();
 }
@@ -247,7 +274,7 @@ function handleMotion(event) {
     state.motion.bodyAccelerationFiltered === null
       ? bodyAcceleration
       : state.motion.bodyAccelerationFiltered +
-        (bodyAcceleration - state.motion.bodyAccelerationFiltered) * URGENT_SMOOTHING_ALPHA;
+        (bodyAcceleration - state.motion.bodyAccelerationFiltered) * PLOMMET_SMOOTHING_ALPHA;
   const bodyAccelerationFiltered = state.motion.bodyAccelerationFiltered;
   const now = performance.now();
 
@@ -325,30 +352,42 @@ function calculateFeatures() {
   const lateralGProxy = Math.abs(Math.sin(toRadians(rollDeg)));
   const mlResult = classifyMotoRisk(state.sensorSamples);
   const speedKmh = state.speedMps * 3.6;
-  const urgentThreshold = Math.max(
-    URGENT_DYNAMIC_MIN,
-    URGENT_DYNAMIC_BASE - speedKmh * URGENT_DYNAMIC_SPEED_FACTOR
+  const plommetThreshold = Math.max(
+    PLOMMET_DYNAMIC_MIN,
+    PLOMMET_DYNAMIC_BASE - speedKmh * PLOMMET_DYNAMIC_SPEED_FACTOR
   );
-  const urgentAccelerationValues = recentSampleValues("bodyAccelerationFiltered", URGENT_WINDOW_MS);
-  const urgentAccelerationMax = Math.max(0, ...urgentAccelerationValues);
-  const urgentAccelerationHits = urgentAccelerationValues.filter((value) => value >= urgentThreshold).length;
-  const urgentAccelerationSamples = urgentAccelerationValues.length;
-  const urgentAccelerationRatio =
-    urgentAccelerationSamples > 0 ? urgentAccelerationHits / urgentAccelerationSamples : 0;
+  const surgeThreshold = plommetThreshold * SURGE_THRESHOLD_FACTOR;
+  const plommetAccelerationValues = recentSampleValues("bodyAccelerationFiltered", PLOMMET_WINDOW_MS);
+  const plommetAccelerationMax = Math.max(0, ...plommetAccelerationValues);
+  const plommetAccelerationHits = plommetAccelerationValues.filter((value) => value >= plommetThreshold).length;
+  const surgeAccelerationHits = plommetAccelerationValues.filter((value) => value >= surgeThreshold).length;
+  const plommetAccelerationSamples = plommetAccelerationValues.length;
+  const plommetAccelerationRatio =
+    plommetAccelerationSamples > 0 ? plommetAccelerationHits / plommetAccelerationSamples : 0;
+  const surgeAccelerationRatio =
+    plommetAccelerationSamples > 0 ? surgeAccelerationHits / plommetAccelerationSamples : 0;
+  const speedTrendAgeMs = state.speedTrendUpdatedAt ? Date.now() - state.speedTrendUpdatedAt : Number.POSITIVE_INFINITY;
+  const speedTrendFresh = speedTrendAgeMs <= SPEED_TREND_FRESH_MS;
 
   return {
     timestamp: Date.now(),
     speedMps: state.speedMps,
     speedKmh,
+    speedDeltaKmh: state.speedDeltaKmh,
+    speedChangeRateKmhps: state.speedChangeRateKmhps,
+    speedTrendFresh,
     rollDeg,
     pitchDeg,
     jerk: state.motion.jerk,
     bodyJerk: state.motion.bodyJerk,
-    urgentThreshold,
-    urgentAccelerationMax,
-    urgentAccelerationHits,
-    urgentAccelerationSamples,
-    urgentAccelerationRatio,
+    plommetThreshold,
+    surgeThreshold,
+    plommetAccelerationMax,
+    plommetAccelerationHits,
+    plommetAccelerationSamples,
+    plommetAccelerationRatio,
+    surgeAccelerationHits,
+    surgeAccelerationRatio,
     yawRateDeg: state.motion.yawRateDeg,
     yawRateRms,
     yawRateVariance,
@@ -407,15 +446,35 @@ function inferRisk(features) {
       (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD && highLean && extremeJerk) ||
       (highSpeed && extremeYaw) ||
       (features.lateralGProxy >= 0.84 && features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD)));
-  const rawUrgent =
-    (features.speedKmh >= URGENT_MIN_SPEED_KMH &&
-      features.urgentAccelerationSamples >= URGENT_MIN_HITS &&
-      features.urgentAccelerationHits >= URGENT_MIN_HITS &&
-      features.urgentAccelerationRatio >= URGENT_MIN_RATIO) ||
-    (features.speedKmh >= URGENT_JERK_MIN_SPEED_KMH &&
+  const speedTrendDecelerating =
+    features.speedTrendFresh &&
+    (features.speedDeltaKmh <= -SPEED_TREND_DELTA_KMH ||
+      features.speedChangeRateKmhps <= -SPEED_TREND_RATE_KMHPS);
+  const speedTrendAccelerating =
+    features.speedTrendFresh &&
+    (features.speedDeltaKmh >= SPEED_TREND_DELTA_KMH ||
+      features.speedChangeRateKmhps >= SPEED_TREND_RATE_KMHPS);
+  const rawLongitudinalEvent =
+    (features.speedKmh >= PLOMMET_MIN_SPEED_KMH &&
+      features.plommetAccelerationSamples >= PLOMMET_MIN_HITS &&
+      features.plommetAccelerationHits >= PLOMMET_MIN_HITS &&
+      features.plommetAccelerationRatio >= PLOMMET_MIN_RATIO) ||
+    (features.speedKmh >= PLOMMET_JERK_MIN_SPEED_KMH &&
       features.bodyJerk >= LEVEL1_JERK_THRESHOLD &&
-      features.urgentAccelerationMax >= features.urgentThreshold * URGENT_JERK_ACCELERATION_FACTOR &&
-      features.urgentAccelerationRatio >= URGENT_MIN_RATIO * 0.5);
+      features.plommetAccelerationMax >= features.plommetThreshold * PLOMMET_JERK_ACCELERATION_FACTOR &&
+      features.plommetAccelerationRatio >= PLOMMET_MIN_RATIO * 0.5);
+  const rawPlommet = rawLongitudinalEvent && (speedTrendDecelerating || !speedTrendAccelerating);
+  const rawSurge =
+    rawLongitudinalEvent &&
+    speedTrendAccelerating &&
+    ((features.speedKmh >= SURGE_MIN_SPEED_KMH &&
+      features.plommetAccelerationSamples >= SURGE_MIN_HITS &&
+      features.surgeAccelerationHits >= SURGE_MIN_HITS &&
+      features.surgeAccelerationRatio >= SURGE_MIN_RATIO) ||
+      (features.speedKmh >= SURGE_JERK_MIN_SPEED_KMH &&
+        features.bodyJerk >= LEVEL1_JERK_THRESHOLD &&
+        features.plommetAccelerationMax >= features.surgeThreshold * SURGE_JERK_ACCELERATION_FACTOR &&
+        features.surgeAccelerationRatio >= SURGE_MIN_RATIO * 0.5));
   const rawLevel1 =
     features.speedKmh >= 15 &&
     (modelCritical ||
@@ -424,8 +483,10 @@ function inferRisk(features) {
       (citySpeed && heavyJerk) ||
       (features.speedKmh >= 28 && repeatedYawSwing));
   const swingConfirmed = confirmedRisk("level1", rawLevel1, LEVEL1_CONFIRM_MS);
-  const urgentConfirmed = confirmedRisk("urgent", rawUrgent, URGENT_CONFIRM_MS);
-  const urgentOverlayRisk = updateUrgentOverlay(urgentConfirmed, swingConfirmed);
+  const plommetConfirmed = confirmedRisk("plommet", rawPlommet, PLOMMET_CONFIRM_MS);
+  const surgeConfirmed = confirmedRisk("surge", rawSurge, PLOMMET_CONFIRM_MS);
+  const transientRisk = plommetConfirmed ? plommetRisk() : surgeConfirmed ? surgeRisk() : null;
+  const transientOverlayRisk = updateLevel1TransientOverlay(transientRisk, swingConfirmed);
 
   if (confirmedRisk("level2", rawLevel2, LEVEL2_CONFIRM_MS)) {
     return {
@@ -437,7 +498,7 @@ function inferRisk(features) {
     };
   }
 
-  if (urgentOverlayRisk) return urgentOverlayRisk;
+  if (transientOverlayRisk) return transientOverlayRisk;
 
   if (swingConfirmed) {
     return {
@@ -449,15 +510,7 @@ function inferRisk(features) {
     };
   }
 
-  if (urgentConfirmed) {
-    return {
-      level: 1,
-      key: "level1",
-      priority: 1,
-      title: "Level 1 Plommet",
-      message: "短時間內連續急煞車，已觸發煞車提醒。",
-    };
-  }
+  if (transientRisk) return transientRisk;
 
   return {
     level: 0,
@@ -468,32 +521,56 @@ function inferRisk(features) {
   };
 }
 
-function updateUrgentOverlay(urgentConfirmed, swingConfirmed) {
+function plommetRisk() {
+  return {
+    level: 1,
+    key: "level1",
+    priority: 1,
+    title: "Level 1 Plommet",
+    message: "短時間內連續急煞車，已觸發煞車提醒。",
+  };
+}
+
+function surgeRisk() {
+  return {
+    level: 1,
+    key: "level1",
+    priority: 1,
+    title: "Level 1 Surge",
+    message: "短時間內連續急加速，已觸發加速提醒。",
+  };
+}
+
+function updateLevel1TransientOverlay(transientRisk, swingConfirmed) {
   const now = Date.now();
 
-  if (!urgentConfirmed || !swingConfirmed) {
-    state.urgentOverlayUntil = 0;
-    state.urgentOverlayConsumed = false;
+  if (!transientRisk || !swingConfirmed) {
+    state.level1TransientOverlayUntil = 0;
+    state.level1TransientOverlayConsumed = false;
+    state.level1TransientOverlayKey = "";
     return null;
   }
 
-  if (!state.urgentOverlayUntil && !state.urgentOverlayConsumed) {
-    state.urgentOverlayUntil = now + URGENT_OVERLAY_MS;
+  if (state.level1TransientOverlayKey && state.level1TransientOverlayKey !== transientRisk.title) {
+    state.level1TransientOverlayUntil = 0;
+    state.level1TransientOverlayConsumed = false;
   }
 
-  if (state.urgentOverlayUntil && now < state.urgentOverlayUntil) {
+  state.level1TransientOverlayKey = transientRisk.title;
+
+  if (!state.level1TransientOverlayUntil && !state.level1TransientOverlayConsumed) {
+    state.level1TransientOverlayUntil = now + LEVEL1_TRANSIENT_OVERLAY_MS;
+  }
+
+  if (state.level1TransientOverlayUntil && now < state.level1TransientOverlayUntil) {
     return {
-      level: 1,
-      key: "level1",
-      priority: 1,
+      ...transientRisk,
       immediate: true,
-      title: "Level 1 Plommet",
-      message: "短時間內連續急煞車，已觸發煞車提醒。",
     };
   }
 
-  state.urgentOverlayUntil = 0;
-  state.urgentOverlayConsumed = true;
+  state.level1TransientOverlayUntil = 0;
+  state.level1TransientOverlayConsumed = true;
   return {
     level: 1,
     key: "level1",
