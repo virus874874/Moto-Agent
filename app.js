@@ -13,14 +13,18 @@ const JERK_DISPLAY_INTERVAL_MS = 1000;
 const LEVEL1_JERK_THRESHOLD = 500;
 const LEVEL2_JERK_THRESHOLD = 700;
 const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
-const URGENT_WINDOW_MS = 400;
-const URGENT_MIN_SPEED_KMH = 10;
-const URGENT_MIN_HITS = 3;
-const URGENT_JERK_MIN_SPEED_KMH = 20;
-const URGENT_JERK_ACCELERATION_FACTOR = 0.8;
+const LEVEL2_OVERSPEED_KMH = 80;
+const URGENT_WINDOW_MS = 700;
+const URGENT_CONFIRM_MS = 600;
+const URGENT_MIN_SPEED_KMH = 15;
+const URGENT_MIN_HITS = 5;
+const URGENT_MIN_RATIO = 0.45;
+const URGENT_JERK_MIN_SPEED_KMH = 25;
+const URGENT_JERK_ACCELERATION_FACTOR = 1.05;
 const URGENT_DYNAMIC_BASE = 5.0;
 const URGENT_DYNAMIC_SPEED_FACTOR = 0.02;
 const URGENT_DYNAMIC_MIN = 2.5;
+const URGENT_SMOOTHING_ALPHA = 0.12;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
 const LEVEL2_RECOVERY_HOLD_MS = 1400;
@@ -62,12 +66,14 @@ const state = {
     jerk: 0,
     bodyJerk: 0,
     yawRateDeg: 0,
+    bodyAccelerationFiltered: null,
     lastBodyAccelerationMagnitude: null,
     lastBodyMotionTime: null,
   },
   sensorSamples: [],
   yawWindowDeg: [],
   riskActiveSince: {
+    urgent: null,
     level1: null,
     level2: null,
   },
@@ -231,6 +237,12 @@ function handleMotion(event) {
   const bodyAcceleration = hasAccelerationVector(event.acceleration)
     ? magnitude(vectorFromAcceleration(event.acceleration))
     : Math.max(0, absoluteAcceleration - 9.80665);
+  state.motion.bodyAccelerationFiltered =
+    state.motion.bodyAccelerationFiltered === null
+      ? bodyAcceleration
+      : state.motion.bodyAccelerationFiltered +
+        (bodyAcceleration - state.motion.bodyAccelerationFiltered) * URGENT_SMOOTHING_ALPHA;
+  const bodyAccelerationFiltered = state.motion.bodyAccelerationFiltered;
   const now = performance.now();
 
   if (absoluteAcceleration > 0) {
@@ -246,15 +258,15 @@ function handleMotion(event) {
     state.motion.lastMotionTime = now;
   }
 
-  if (Number.isFinite(bodyAcceleration)) {
+  if (Number.isFinite(bodyAccelerationFiltered)) {
     if (state.motion.lastBodyAccelerationMagnitude !== null && state.motion.lastBodyMotionTime !== null) {
       const deltaSeconds = (now - state.motion.lastBodyMotionTime) / 1000;
       if (deltaSeconds > 0) {
         state.motion.bodyJerk =
-          Math.abs(bodyAcceleration - state.motion.lastBodyAccelerationMagnitude) / deltaSeconds;
+          Math.abs(bodyAccelerationFiltered - state.motion.lastBodyAccelerationMagnitude) / deltaSeconds;
       }
     }
-    state.motion.lastBodyAccelerationMagnitude = bodyAcceleration;
+    state.motion.lastBodyAccelerationMagnitude = bodyAccelerationFiltered;
     state.motion.lastBodyMotionTime = now;
   }
 
@@ -281,6 +293,7 @@ function handleMotion(event) {
       linearAccelerationZ: linear.z,
       absoluteAcceleration,
       bodyAcceleration,
+      bodyAccelerationFiltered,
       gyroscopeX: gyroRad.x,
       gyroscopeY: gyroRad.y,
       gyroscopeZ: gyroRad.z,
@@ -310,9 +323,12 @@ function calculateFeatures() {
     URGENT_DYNAMIC_MIN,
     URGENT_DYNAMIC_BASE - speedKmh * URGENT_DYNAMIC_SPEED_FACTOR
   );
-  const urgentAccelerationValues = recentSampleValues("bodyAcceleration", URGENT_WINDOW_MS);
+  const urgentAccelerationValues = recentSampleValues("bodyAccelerationFiltered", URGENT_WINDOW_MS);
   const urgentAccelerationMax = Math.max(0, ...urgentAccelerationValues);
   const urgentAccelerationHits = urgentAccelerationValues.filter((value) => value >= urgentThreshold).length;
+  const urgentAccelerationSamples = urgentAccelerationValues.length;
+  const urgentAccelerationRatio =
+    urgentAccelerationSamples > 0 ? urgentAccelerationHits / urgentAccelerationSamples : 0;
 
   return {
     timestamp: Date.now(),
@@ -325,6 +341,8 @@ function calculateFeatures() {
     urgentThreshold,
     urgentAccelerationMax,
     urgentAccelerationHits,
+    urgentAccelerationSamples,
+    urgentAccelerationRatio,
     yawRateDeg: state.motion.yawRateDeg,
     yawRateRms,
     yawRateVariance,
@@ -344,6 +362,7 @@ function inferRisk(features) {
   const highSpeed = features.speedKmh >= 60;
   const citySpeed = features.speedKmh >= 30;
   const level2Speed = features.speedKmh >= 40;
+  const overspeed = features.speedKmh > LEVEL2_OVERSPEED_KMH;
   const highLean = Math.abs(features.rollDeg) >= 40;
   const extremeLean = Math.abs(features.rollDeg) >= 46;
   const heavyJerk = features.jerk >= LEVEL1_JERK_THRESHOLD;
@@ -375,18 +394,24 @@ function inferRisk(features) {
       extremeYaw ||
       (features.mlFeatures?.absAccRms ?? 0) >= 13.8);
   const rawLevel2 =
-    level2Speed &&
+    overspeed ||
+    (level2Speed &&
     (severeModelCritical ||
       (features.speedKmh >= 75 && highLean) ||
       (highSpeed && extremeLean) ||
       (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD && highLean && extremeJerk) ||
       (highSpeed && extremeYaw) ||
-      (features.lateralGProxy >= 0.84 && features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD));
+      (features.lateralGProxy >= 0.84 && features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD)));
   const rawUrgent =
-    (features.speedKmh >= URGENT_MIN_SPEED_KMH && features.urgentAccelerationHits >= URGENT_MIN_HITS) ||
+    (features.speedKmh >= URGENT_MIN_SPEED_KMH &&
+      features.urgentAccelerationSamples >= URGENT_MIN_HITS &&
+      features.urgentAccelerationHits >= URGENT_MIN_HITS &&
+      features.urgentAccelerationRatio >= URGENT_MIN_RATIO) ||
     (features.speedKmh >= URGENT_JERK_MIN_SPEED_KMH &&
       features.bodyJerk >= LEVEL1_JERK_THRESHOLD &&
-      features.urgentAccelerationMax >= features.urgentThreshold * URGENT_JERK_ACCELERATION_FACTOR);
+      features.urgentAccelerationMax >= features.urgentThreshold * URGENT_JERK_ACCELERATION_FACTOR &&
+      features.urgentAccelerationRatio >= URGENT_MIN_RATIO * 0.5);
+  const urgentConfirmed = confirmedRisk("urgent", rawUrgent, URGENT_CONFIRM_MS);
   const rawLevel1 =
     modelCritical ||
     modelFatigue ||
@@ -400,13 +425,13 @@ function inferRisk(features) {
     return {
       level: 2,
       key: "level2",
-      priority: 3,
-      title: "Level 2 高風險",
-      message: "高速大傾角、重煞或連續左右擺振已觸發最高優先警示。",
+      priority: overspeed ? 4 : 3,
+      title: overspeed ? "Level 2 Overspeed" : "Level 2 Reckless Driving",
+      message: overspeed ? "速度超過 80 km/h，已觸發超速紅標。" : "高風險動態已觸發危險駕駛紅標。",
     };
   }
 
-  if (rawUrgent) {
+  if (urgentConfirmed) {
     return {
       level: 1,
       key: "level1",
@@ -421,8 +446,8 @@ function inferRisk(features) {
       level: 1,
       key: "level1",
       priority: 1,
-      title: "Level 1 疲勞晃動",
-      message: "短時間 yaw rate 變化偏高，可能有微幅蛇行或路面碎震。",
+      title: "Level 1 Swing",
+      message: "短時間 yaw rate 變化偏高，可能有左右擺動或鑽車動態。",
     };
   }
 

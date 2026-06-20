@@ -22,7 +22,7 @@ https://virus874874.github.io/Moto-Agent/
 - 使用 DeviceMotion / DeviceOrientation 取得 IMU 資料
 - 即時顯示速度、傾角與 Jerk
 - 使用 Aerox 感測器資料訓練出的 JavaScript 決策樹做本機推論
-- 風險狀態包含 Level 0、Level 1 Urgent、Level 1 疲勞晃動、Level 2
+- 風險狀態包含 Level 0、Level 1 Urgent、Level 1 Swing、Level 2
 
 ## Risk Levels
 
@@ -31,14 +31,14 @@ https://virus874874.github.io/Moto-Agent/
 一般穩定狀態。  
 此時 Jerk 卡片為綠色。
 
-### Level 1 疲勞晃動
+### Level 1 Swing
 
-代表連續晃動或蛇行傾向。  
+代表連續晃動、蛇行或鑽車時的左右擺動傾向。  
 Level 1 條件需要連續達成約 `2.2 秒` 才會顯示。
 
 主要參考：
 
-- ML 判斷為 `fatigue`
+- ML 判斷為 `fatigue`，在 App 顯示為 `Swing`
 - ML 判斷為 `critical_like` 但未達 Level 2
 - 中速以上大傾角
 - 中速以上高 Jerk
@@ -48,6 +48,7 @@ Level 1 條件需要連續達成約 `2.2 秒` 才會顯示。
 
 代表短時間明顯急煞、急加速或嚴重頓挫。  
 Urgent 使用不含重力的 body acceleration；若手機沒有提供該資料，則以 `accelerationIncludingGravity - 9.80665` 近似補償。
+為了避免行車碎震誤判，Urgent 會使用低通平滑後的 body acceleration，並要求條件持續約 `0.6 秒`。
 
 動態門檻：
 
@@ -58,13 +59,15 @@ if (threshold < 2.5) threshold = 2.5;
 
 符合任一條件即觸發：
 
-- 速度 `>= 10 km/h`，且最近 `0.4 秒` 內至少 `3` 筆 body acceleration `>= threshold`
-- 速度 `>= 20 km/h`，且 body jerk `>= 500`，並且最近 `0.4 秒` 內 body acceleration 最大值 `>= threshold * 0.8`
+- 速度 `>= 15 km/h`，且最近 `0.7 秒` 內至少 `5` 筆平滑後 body acceleration `>= threshold`，且達標比例 `>= 45%`
+- 速度 `>= 25 km/h`，且平滑後 body jerk `>= 500`，最近 `0.7 秒` 內平滑後 body acceleration 最大值 `>= threshold * 1.05`，且達標比例 `>= 22.5%`
 
 ### Level 2 高風險
 
 代表高風險動態。  
-Level 2 條件需要連續達成約 `1.8 秒` 才會顯示，主要綜合速度、傾角、Jerk、yaw 與 ML `critical_like` 判斷。
+Level 2 條件需要連續達成約 `1.8 秒` 才會顯示。
+速度 `> 80 km/h` 時顯示 `Level 2 Overspeed`；其他 Level 2 觸發則顯示 `Level 2 Reckless Driving`。
+Reckless Driving 主要綜合速度、傾角、Jerk、yaw 與 ML `critical_like` 判斷。
 
 ## Machine Learning
 
