@@ -13,6 +13,14 @@ const JERK_DISPLAY_INTERVAL_MS = 1000;
 const LEVEL1_JERK_THRESHOLD = 500;
 const LEVEL2_JERK_THRESHOLD = 700;
 const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
+const URGENT_WINDOW_MS = 400;
+const URGENT_MIN_SPEED_KMH = 10;
+const URGENT_MIN_HITS = 3;
+const URGENT_JERK_MIN_SPEED_KMH = 20;
+const URGENT_JERK_ACCELERATION_FACTOR = 0.8;
+const URGENT_DYNAMIC_BASE = 5.0;
+const URGENT_DYNAMIC_SPEED_FACTOR = 0.02;
+const URGENT_DYNAMIC_MIN = 2.5;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
 const LEVEL2_RECOVERY_HOLD_MS = 1400;
@@ -52,7 +60,10 @@ const state = {
     lastAccelerationMagnitude: null,
     lastMotionTime: null,
     jerk: 0,
+    bodyJerk: 0,
     yawRateDeg: 0,
+    lastBodyAccelerationMagnitude: null,
+    lastBodyMotionTime: null,
   },
   sensorSamples: [],
   yawWindowDeg: [],
@@ -217,6 +228,9 @@ function handleMotion(event) {
   const linear = vectorFromAcceleration(linearAcceleration);
   const absolute = vectorFromAcceleration(absoluteAccelerationSource);
   const absoluteAcceleration = magnitude(absolute);
+  const bodyAcceleration = hasAccelerationVector(event.acceleration)
+    ? magnitude(vectorFromAcceleration(event.acceleration))
+    : Math.max(0, absoluteAcceleration - 9.80665);
   const now = performance.now();
 
   if (absoluteAcceleration > 0) {
@@ -230,6 +244,18 @@ function handleMotion(event) {
     state.motion.accelerationMagnitude = absoluteAcceleration;
     state.motion.lastAccelerationMagnitude = absoluteAcceleration;
     state.motion.lastMotionTime = now;
+  }
+
+  if (Number.isFinite(bodyAcceleration)) {
+    if (state.motion.lastBodyAccelerationMagnitude !== null && state.motion.lastBodyMotionTime !== null) {
+      const deltaSeconds = (now - state.motion.lastBodyMotionTime) / 1000;
+      if (deltaSeconds > 0) {
+        state.motion.bodyJerk =
+          Math.abs(bodyAcceleration - state.motion.lastBodyAccelerationMagnitude) / deltaSeconds;
+      }
+    }
+    state.motion.lastBodyAccelerationMagnitude = bodyAcceleration;
+    state.motion.lastBodyMotionTime = now;
   }
 
   const gyroDeg = {
@@ -254,6 +280,7 @@ function handleMotion(event) {
       linearAccelerationY: linear.y,
       linearAccelerationZ: linear.z,
       absoluteAcceleration,
+      bodyAcceleration,
       gyroscopeX: gyroRad.x,
       gyroscopeY: gyroRad.y,
       gyroscopeZ: gyroRad.z,
@@ -278,14 +305,26 @@ function calculateFeatures() {
   const yawRateVariance = variance(state.yawWindowDeg);
   const lateralGProxy = Math.abs(Math.sin(toRadians(rollDeg)));
   const mlResult = classifyMotoRisk(state.sensorSamples);
+  const speedKmh = state.speedMps * 3.6;
+  const urgentThreshold = Math.max(
+    URGENT_DYNAMIC_MIN,
+    URGENT_DYNAMIC_BASE - speedKmh * URGENT_DYNAMIC_SPEED_FACTOR
+  );
+  const urgentAccelerationValues = recentSampleValues("bodyAcceleration", URGENT_WINDOW_MS);
+  const urgentAccelerationMax = Math.max(0, ...urgentAccelerationValues);
+  const urgentAccelerationHits = urgentAccelerationValues.filter((value) => value >= urgentThreshold).length;
 
   return {
     timestamp: Date.now(),
     speedMps: state.speedMps,
-    speedKmh: state.speedMps * 3.6,
+    speedKmh,
     rollDeg,
     pitchDeg,
     jerk: state.motion.jerk,
+    bodyJerk: state.motion.bodyJerk,
+    urgentThreshold,
+    urgentAccelerationMax,
+    urgentAccelerationHits,
     yawRateDeg: state.motion.yawRateDeg,
     yawRateRms,
     yawRateVariance,
@@ -343,6 +382,11 @@ function inferRisk(features) {
       (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD && highLean && extremeJerk) ||
       (highSpeed && extremeYaw) ||
       (features.lateralGProxy >= 0.84 && features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD));
+  const rawUrgent =
+    (features.speedKmh >= URGENT_MIN_SPEED_KMH && features.urgentAccelerationHits >= URGENT_MIN_HITS) ||
+    (features.speedKmh >= URGENT_JERK_MIN_SPEED_KMH &&
+      features.bodyJerk >= LEVEL1_JERK_THRESHOLD &&
+      features.urgentAccelerationMax >= features.urgentThreshold * URGENT_JERK_ACCELERATION_FACTOR);
   const rawLevel1 =
     modelCritical ||
     modelFatigue ||
@@ -356,8 +400,19 @@ function inferRisk(features) {
     return {
       level: 2,
       key: "level2",
+      priority: 3,
       title: "Level 2 高風險",
       message: "高速大傾角、重煞或連續左右擺振已觸發最高優先警示。",
+    };
+  }
+
+  if (rawUrgent) {
+    return {
+      level: 1,
+      key: "level1",
+      priority: 2,
+      title: "Level 1 Urgent",
+      message: "短時間內連續急加速度或急減速，已觸發緊急提醒。",
     };
   }
 
@@ -365,6 +420,7 @@ function inferRisk(features) {
     return {
       level: 1,
       key: "level1",
+      priority: 1,
       title: "Level 1 疲勞晃動",
       message: "短時間 yaw rate 變化偏高，可能有微幅蛇行或路面碎震。",
     };
@@ -373,6 +429,7 @@ function inferRisk(features) {
   return {
     level: 0,
     key: state.hasSensorPermission ? "level0" : "idle",
+    priority: 0,
     title: state.hasSensorPermission ? "Level 0 狀態正常" : "尚未啟動",
     message: state.hasSensorPermission ? "GPS 速度區間與 IMU 高頻資料持續監測中。" : "請先啟動感測器、GPS，並完成歸零校正。",
   };
@@ -398,6 +455,13 @@ function stabilizeRisk(nextRisk) {
   const currentRisk = state.displayedRisk;
 
   if (!currentRisk || currentRisk.key === "idle" || nextRisk.level > currentRisk.level) {
+    state.displayedRisk = nextRisk;
+    state.pendingRisk = null;
+    state.pendingRiskSince = 0;
+    return nextRisk;
+  }
+
+  if (nextRisk.level === currentRisk.level && riskPriority(nextRisk) > riskPriority(currentRisk)) {
     state.displayedRisk = nextRisk;
     state.pendingRisk = null;
     state.pendingRiskSince = 0;
@@ -431,6 +495,10 @@ function stabilizeRisk(nextRisk) {
 
 function sameDisplayBand(leftRisk, rightRisk) {
   return leftRisk.level === rightRisk.level && leftRisk.key === rightRisk.key;
+}
+
+function riskPriority(risk) {
+  return Number(risk.priority ?? risk.level ?? 0);
 }
 
 function render(features, risk) {
@@ -510,8 +578,24 @@ function vectorFromAcceleration(acceleration) {
   };
 }
 
+function hasAccelerationVector(acceleration) {
+  if (!acceleration) return false;
+  return ["x", "y", "z"].some((axis) => typeof acceleration[axis] === "number" && Number.isFinite(acceleration[axis]));
+}
+
 function magnitude(vector) {
   return Math.sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
+}
+
+function recentSampleValues(key, windowMs) {
+  const latestSample = state.sensorSamples[state.sensorSamples.length - 1];
+  if (!latestSample) return [];
+
+  const since = latestSample.time - windowMs / 1000;
+  return state.sensorSamples
+    .filter((sample) => sample.time >= since)
+    .map((sample) => Number(sample[key] || 0))
+    .filter((value) => Number.isFinite(value));
 }
 
 function pushWindow(values, value, limit) {
