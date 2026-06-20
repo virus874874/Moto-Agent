@@ -14,11 +14,11 @@ const LEVEL1_JERK_THRESHOLD = 500;
 const LEVEL2_JERK_THRESHOLD = 700;
 const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
 const LEVEL2_OVERSPEED_KMH = 80;
-const LEVEL2_MODEL_LEAN_DEG = 38;
-const LEVEL2_MODEL_SUPPORT_LEAN_DEG = 28;
-const LEVEL2_MODEL_YAW_LEAN_DEG = 32;
-const LEVEL2_MODEL_YAW_RMS = 64;
-const LEVEL2_MODEL_ABS_ACC_RMS = 14.4;
+const LEVEL2_MODEL_LEAN_DEG = 35;
+const LEVEL2_MODEL_SUPPORT_LEAN_DEG = 24;
+const LEVEL2_MODEL_YAW_LEAN_DEG = 28;
+const LEVEL2_MODEL_YAW_RMS = 61;
+const LEVEL2_MODEL_ABS_ACC_RMS = 14.1;
 const LEVEL1_RELEASE_HOLD_MS = 500;
 const SWING_MIN_YAW_ZERO_CROSSINGS = 5;
 const SWING_YAW_VARIANCE_THRESHOLD = 650;
@@ -535,7 +535,7 @@ function plommetRisk() {
     level: 1,
     key: "level1",
     priority: 1,
-    title: "Level 1 Draccelerate",
+    title: "Level 1 Decelerate",
     message: "短時間內連續急煞車，已觸發煞車提醒。",
   };
 }
@@ -545,7 +545,7 @@ function surgeRisk() {
     level: 1,
     key: "level1",
     priority: 1,
-    title: "Level 1 Accelerate",
+    title: "Level 1 Surge",
     message: "短時間內連續急加速，已觸發加速提醒。",
   };
 }
