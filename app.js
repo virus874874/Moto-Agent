@@ -14,16 +14,20 @@ const LEVEL1_JERK_THRESHOLD = 500;
 const LEVEL2_JERK_THRESHOLD = 700;
 const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
 const LEVEL2_OVERSPEED_KMH = 80;
-const URGENT_WINDOW_MS = 700;
-const URGENT_CONFIRM_MS = 600;
-const URGENT_MIN_SPEED_KMH = 15;
-const URGENT_MIN_HITS = 5;
-const URGENT_MIN_RATIO = 0.45;
-const URGENT_JERK_MIN_SPEED_KMH = 25;
-const URGENT_JERK_ACCELERATION_FACTOR = 1.05;
-const URGENT_DYNAMIC_BASE = 5.0;
-const URGENT_DYNAMIC_SPEED_FACTOR = 0.02;
-const URGENT_DYNAMIC_MIN = 2.5;
+const LEVEL1_RELEASE_HOLD_MS = 500;
+const SWING_MIN_YAW_ZERO_CROSSINGS = 5;
+const SWING_YAW_VARIANCE_THRESHOLD = 650;
+const URGENT_OVERLAY_MS = 1000;
+const URGENT_WINDOW_MS = 800;
+const URGENT_CONFIRM_MS = 700;
+const URGENT_MIN_SPEED_KMH = 25;
+const URGENT_MIN_HITS = 6;
+const URGENT_MIN_RATIO = 0.55;
+const URGENT_JERK_MIN_SPEED_KMH = 35;
+const URGENT_JERK_ACCELERATION_FACTOR = 1.25;
+const URGENT_DYNAMIC_BASE = 5.8;
+const URGENT_DYNAMIC_SPEED_FACTOR = 0.015;
+const URGENT_DYNAMIC_MIN = 3.5;
 const URGENT_SMOOTHING_ALPHA = 0.12;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
@@ -82,6 +86,8 @@ const state = {
   displayedRisk: null,
   pendingRisk: null,
   pendingRiskSince: 0,
+  urgentOverlayUntil: 0,
+  urgentOverlayConsumed: false,
   audioContext: null,
   lastCriticalCueAt: 0,
 };
@@ -367,14 +373,13 @@ function inferRisk(features) {
   const extremeLean = Math.abs(features.rollDeg) >= 46;
   const heavyJerk = features.jerk >= LEVEL1_JERK_THRESHOLD;
   const extremeJerk = features.jerk >= LEVEL2_JERK_THRESHOLD;
-  const unstableYaw =
-    features.yawRateRms >= 44 ||
-    features.yawRateVariance >= 760 ||
-    features.yawZeroCrossings >= 5;
   const extremeYaw =
     features.yawRateRms >= 68 ||
     features.yawRateVariance >= 1700 ||
     features.yawZeroCrossings >= 10;
+  const repeatedYawSwing =
+    features.yawZeroCrossings >= SWING_MIN_YAW_ZERO_CROSSINGS &&
+    (features.yawRateRms >= 44 || features.yawRateVariance >= SWING_YAW_VARIANCE_THRESHOLD);
   const movingEvidence =
     features.speedKmh >= 8 ||
     Math.abs(features.rollDeg) >= 12 ||
@@ -411,15 +416,15 @@ function inferRisk(features) {
       features.bodyJerk >= LEVEL1_JERK_THRESHOLD &&
       features.urgentAccelerationMax >= features.urgentThreshold * URGENT_JERK_ACCELERATION_FACTOR &&
       features.urgentAccelerationRatio >= URGENT_MIN_RATIO * 0.5);
-  const urgentConfirmed = confirmedRisk("urgent", rawUrgent, URGENT_CONFIRM_MS);
   const rawLevel1 =
     modelCritical ||
     modelFatigue ||
     (citySpeed && highLean) ||
     (citySpeed && heavyJerk) ||
-    (features.speedKmh >= 28 &&
-      ((unstableYaw && features.yawZeroCrossings >= 3) ||
-        features.yawRateVariance >= 520));
+    (features.speedKmh >= 28 && repeatedYawSwing);
+  const swingConfirmed = confirmedRisk("level1", rawLevel1, LEVEL1_CONFIRM_MS);
+  const urgentConfirmed = confirmedRisk("urgent", rawUrgent, URGENT_CONFIRM_MS);
+  const urgentOverlayRisk = updateUrgentOverlay(urgentConfirmed, swingConfirmed);
 
   if (confirmedRisk("level2", rawLevel2, LEVEL2_CONFIRM_MS)) {
     return {
@@ -431,17 +436,9 @@ function inferRisk(features) {
     };
   }
 
-  if (urgentConfirmed) {
-    return {
-      level: 1,
-      key: "level1",
-      priority: 2,
-      title: "Level 1 Urgent",
-      message: "短時間內連續急加速度或急減速，已觸發緊急提醒。",
-    };
-  }
+  if (urgentOverlayRisk) return urgentOverlayRisk;
 
-  if (confirmedRisk("level1", rawLevel1, LEVEL1_CONFIRM_MS)) {
+  if (swingConfirmed) {
     return {
       level: 1,
       key: "level1",
@@ -451,12 +448,58 @@ function inferRisk(features) {
     };
   }
 
+  if (urgentConfirmed) {
+    return {
+      level: 1,
+      key: "level1",
+      priority: 1,
+      title: "Level 1 Urgent",
+      message: "短時間內連續急加速度或急減速，已觸發緊急提醒。",
+    };
+  }
+
   return {
     level: 0,
     key: state.hasSensorPermission ? "level0" : "idle",
     priority: 0,
     title: state.hasSensorPermission ? "Level 0 狀態正常" : "尚未啟動",
     message: state.hasSensorPermission ? "GPS 速度區間與 IMU 高頻資料持續監測中。" : "請先啟動感測器、GPS，並完成歸零校正。",
+  };
+}
+
+function updateUrgentOverlay(urgentConfirmed, swingConfirmed) {
+  const now = Date.now();
+
+  if (!urgentConfirmed || !swingConfirmed) {
+    state.urgentOverlayUntil = 0;
+    state.urgentOverlayConsumed = false;
+    return null;
+  }
+
+  if (!state.urgentOverlayUntil && !state.urgentOverlayConsumed) {
+    state.urgentOverlayUntil = now + URGENT_OVERLAY_MS;
+  }
+
+  if (state.urgentOverlayUntil && now < state.urgentOverlayUntil) {
+    return {
+      level: 1,
+      key: "level1",
+      priority: 1,
+      immediate: true,
+      title: "Level 1 Urgent",
+      message: "短時間內連續急加速度或急減速，已觸發緊急提醒。",
+    };
+  }
+
+  state.urgentOverlayUntil = 0;
+  state.urgentOverlayConsumed = true;
+  return {
+    level: 1,
+    key: "level1",
+    priority: 1,
+    immediate: true,
+    title: "Level 1 Swing",
+    message: "短時間 yaw rate 變化偏高，可能有左右擺動或鑽車動態。",
   };
 }
 
@@ -478,6 +521,13 @@ function confirmedRisk(key, active, durationMs) {
 function stabilizeRisk(nextRisk) {
   const now = Date.now();
   const currentRisk = state.displayedRisk;
+
+  if (nextRisk.immediate) {
+    state.displayedRisk = nextRisk;
+    state.pendingRisk = null;
+    state.pendingRiskSince = 0;
+    return nextRisk;
+  }
 
   if (!currentRisk || currentRisk.key === "idle" || nextRisk.level > currentRisk.level) {
     state.displayedRisk = nextRisk;
@@ -506,7 +556,7 @@ function stabilizeRisk(nextRisk) {
   }
 
   state.pendingRisk = nextRisk;
-  const holdMs = currentRisk.level === 2 && nextRisk.level < 2 ? LEVEL2_RECOVERY_HOLD_MS : RISK_DISPLAY_HOLD_MS;
+  const holdMs = displayHoldMs(currentRisk, nextRisk);
 
   if (now - state.pendingRiskSince >= holdMs) {
     state.displayedRisk = nextRisk;
@@ -524,6 +574,12 @@ function sameDisplayBand(leftRisk, rightRisk) {
 
 function riskPriority(risk) {
   return Number(risk.priority ?? risk.level ?? 0);
+}
+
+function displayHoldMs(currentRisk, nextRisk) {
+  if (currentRisk.level === 2 && nextRisk.level < 2) return LEVEL2_RECOVERY_HOLD_MS;
+  if (currentRisk.level === 1 && nextRisk.level <= 1) return LEVEL1_RELEASE_HOLD_MS;
+  return RISK_DISPLAY_HOLD_MS;
 }
 
 function render(features, risk) {
