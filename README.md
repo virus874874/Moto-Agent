@@ -22,7 +22,7 @@ https://virus874874.github.io/Moto-Agent/
 - 使用 DeviceMotion / DeviceOrientation 取得 IMU 資料
 - 即時顯示速度、傾角與 Jerk
 - 使用 Aerox 感測器資料訓練出的 JavaScript 決策樹做本機推論
-- 風險狀態包含 Level 0、Level 1 Urgent、Level 1 Swing、Level 2
+- 風險狀態包含 Level 0、Level 1 Plommet、Level 1 Swing、Level 2
 
 ## Risk Levels
 
@@ -35,6 +35,7 @@ https://virus874874.github.io/Moto-Agent/
 
 代表連續晃動、蛇行或鑽車時的左右擺動傾向。  
 Level 1 條件需要連續達成約 `2.2 秒` 才會顯示。
+速度低於 `15 km/h` 時不會觸發 Swing。
 Yaw 類 Swing 需要更明確的連續左右擺動，避免龍頭來回一次就觸發。
 
 主要參考：
@@ -45,12 +46,12 @@ Yaw 類 Swing 需要更明確的連續左右擺動，避免龍頭來回一次就
 - 中速以上高 Jerk
 - yaw zero crossings `>= 5`，且 yaw RMS 或 yaw variance 偏高
 
-### Level 1 Urgent
+### Level 1 Plommet
 
-代表短時間明顯急煞、急加速或嚴重頓挫。  
-Urgent 使用不含重力的 body acceleration；若手機沒有提供該資料，則以 `accelerationIncludingGravity - 9.80665` 近似補償。
-為了避免行車碎震誤判，Urgent 會使用低通平滑後的 body acceleration，並要求條件持續約 `0.7 秒`。
-若 Urgent 與 Swing 同時成立，App 會先顯示 `Level 1 Urgent` 約 `1 秒`，之後若 Swing 仍成立會立刻回到 `Level 1 Swing`，不會重新計算 Swing 的確認時間。
+代表短時間明顯急煞車。  
+Plommet 使用不含重力的 body acceleration；若手機沒有提供該資料，則以 `accelerationIncludingGravity - 9.80665` 近似補償。
+為了避免行車碎震誤判，Plommet 會使用低通平滑後的 body acceleration，並要求條件持續約 `0.7 秒`。
+若 Plommet 與 Swing 同時成立，App 會先顯示 `Level 1 Plommet` 約 `1 秒`，之後若 Swing 仍成立會立刻回到 `Level 1 Swing`，不會重新計算 Swing 的確認時間。
 
 動態門檻：
 
@@ -64,7 +65,7 @@ if (threshold < 3.5) threshold = 3.5;
 - 速度 `>= 25 km/h`，且最近 `0.8 秒` 內至少 `6` 筆平滑後 body acceleration `>= threshold`，且達標比例 `>= 55%`
 - 速度 `>= 35 km/h`，且平滑後 body jerk `>= 500`，最近 `0.8 秒` 內平滑後 body acceleration 最大值 `>= threshold * 1.25`，且達標比例 `>= 27.5%`
 
-Level 1 的 Swing / Urgent 特徵消失後，約 `0.5 秒` 內會切回目前狀態。
+Level 1 的 Swing / Plommet 特徵消失後，約 `0.5 秒` 內會切回目前狀態。
 
 ### Level 2 高風險
 

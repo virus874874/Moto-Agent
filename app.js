@@ -417,11 +417,12 @@ function inferRisk(features) {
       features.urgentAccelerationMax >= features.urgentThreshold * URGENT_JERK_ACCELERATION_FACTOR &&
       features.urgentAccelerationRatio >= URGENT_MIN_RATIO * 0.5);
   const rawLevel1 =
-    modelCritical ||
-    modelFatigue ||
-    (citySpeed && highLean) ||
-    (citySpeed && heavyJerk) ||
-    (features.speedKmh >= 28 && repeatedYawSwing);
+    features.speedKmh >= 15 &&
+    (modelCritical ||
+      modelFatigue ||
+      (citySpeed && highLean) ||
+      (citySpeed && heavyJerk) ||
+      (features.speedKmh >= 28 && repeatedYawSwing));
   const swingConfirmed = confirmedRisk("level1", rawLevel1, LEVEL1_CONFIRM_MS);
   const urgentConfirmed = confirmedRisk("urgent", rawUrgent, URGENT_CONFIRM_MS);
   const urgentOverlayRisk = updateUrgentOverlay(urgentConfirmed, swingConfirmed);
@@ -453,8 +454,8 @@ function inferRisk(features) {
       level: 1,
       key: "level1",
       priority: 1,
-      title: "Level 1 Urgent",
-      message: "短時間內連續急加速度或急減速，已觸發緊急提醒。",
+      title: "Level 1 Plommet",
+      message: "短時間內連續急煞車，已觸發煞車提醒。",
     };
   }
 
@@ -486,8 +487,8 @@ function updateUrgentOverlay(urgentConfirmed, swingConfirmed) {
       key: "level1",
       priority: 1,
       immediate: true,
-      title: "Level 1 Urgent",
-      message: "短時間內連續急加速度或急減速，已觸發緊急提醒。",
+      title: "Level 1 Plommet",
+      message: "短時間內連續急煞車，已觸發煞車提醒。",
     };
   }
 
