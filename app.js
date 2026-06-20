@@ -14,9 +14,11 @@ const LEVEL1_JERK_THRESHOLD = 500;
 const LEVEL2_JERK_THRESHOLD = 700;
 const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
 const LEVEL2_OVERSPEED_KMH = 80;
-const LEVEL2_MODEL_LEAN_DEG = 32;
-const LEVEL2_MODEL_YAW_RMS = 58;
-const LEVEL2_MODEL_ABS_ACC_RMS = 13.8;
+const LEVEL2_MODEL_LEAN_DEG = 38;
+const LEVEL2_MODEL_SUPPORT_LEAN_DEG = 28;
+const LEVEL2_MODEL_YAW_LEAN_DEG = 32;
+const LEVEL2_MODEL_YAW_RMS = 64;
+const LEVEL2_MODEL_ABS_ACC_RMS = 14.4;
 const LEVEL1_RELEASE_HOLD_MS = 500;
 const SWING_MIN_YAW_ZERO_CROSSINGS = 5;
 const SWING_YAW_VARIANCE_THRESHOLD = 650;
@@ -433,15 +435,17 @@ function inferRisk(features) {
     (features.yawRateRms >= 34 && (features.mlFeatures?.absAccRms ?? 0) >= 11.8);
   const modelCritical = features.level2MlReady && movingEvidence && features.mlLabel === "critical_like";
   const modelFatigue = features.level1MlReady && level1RideEvidence && features.mlLabel === "fatigue";
+  const modelLean = Math.abs(features.rollDeg) >= LEVEL2_MODEL_LEAN_DEG;
+  const modelSupportLean = Math.abs(features.rollDeg) >= LEVEL2_MODEL_SUPPORT_LEAN_DEG;
+  const modelYawWithLean = extremeYaw && Math.abs(features.rollDeg) >= LEVEL2_MODEL_YAW_LEAN_DEG;
   const severeModelCritical =
     modelCritical &&
-    (extremeLean ||
-      extremeJerk ||
-      extremeYaw ||
+    (modelLean ||
+      (extremeJerk && modelSupportLean) ||
+      modelYawWithLean ||
       (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD &&
-        (Math.abs(features.rollDeg) >= LEVEL2_MODEL_LEAN_DEG ||
-          features.yawRateRms >= LEVEL2_MODEL_YAW_RMS ||
-          (features.mlFeatures?.absAccRms ?? 0) >= LEVEL2_MODEL_ABS_ACC_RMS)));
+        ((features.yawRateRms >= LEVEL2_MODEL_YAW_RMS && modelSupportLean) ||
+          ((features.mlFeatures?.absAccRms ?? 0) >= LEVEL2_MODEL_ABS_ACC_RMS && modelSupportLean))));
   const rawLevel2 =
     overspeed ||
     (level2Speed &&
@@ -449,7 +453,7 @@ function inferRisk(features) {
       (features.speedKmh >= 75 && highLean) ||
       (highSpeed && extremeLean) ||
       (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD && highLean && extremeJerk) ||
-      (highSpeed && extremeYaw) ||
+      (highSpeed && extremeYaw && Math.abs(features.rollDeg) >= LEVEL2_MODEL_YAW_LEAN_DEG) ||
       (features.lateralGProxy >= 0.84 && features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD)));
   const speedTrendDecelerating =
     features.speedTrendFresh &&
@@ -531,7 +535,7 @@ function plommetRisk() {
     level: 1,
     key: "level1",
     priority: 1,
-    title: "Level 1 Plommet",
+    title: "Level 1 Draccelerate",
     message: "短時間內連續急煞車，已觸發煞車提醒。",
   };
 }
@@ -541,7 +545,7 @@ function surgeRisk() {
     level: 1,
     key: "level1",
     priority: 1,
-    title: "Level 1 Surge",
+    title: "Level 1 Accelerate",
     message: "短時間內連續急加速，已觸發加速提醒。",
   };
 }
