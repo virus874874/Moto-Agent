@@ -1,4 +1,4 @@
-const CACHE_NAME = "moto-agent-v25";
+const CACHE_NAME = "moto-agent-v26";
 const APP_ASSETS = [
   "./",
   "./index.html",

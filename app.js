@@ -5,7 +5,8 @@ const YAW_WINDOW_LIMIT = 80;
 const MIN_ML_SAMPLES = 60;
 const MIN_LEVEL1_ML_SAMPLES = 100;
 const MIN_LEVEL2_ML_SAMPLES = 120;
-const LEVEL1_CONFIRM_MS = 2200;
+const SWING_CONFIRM_MS = 3000;
+const LEVEL1_RECOVERY_HOLD_MS = 1000;
 const LEVEL2_CONFIRM_MS = 1800;
 const CRITICAL_CUE_INTERVAL_MS = 1300;
 const ROLL_DISPLAY_INTERVAL_MS = 1000;
@@ -16,6 +17,12 @@ const LEVEL2_STRONG_SPEED_THRESHOLD = 60;
 const ORIENTATION_LOCK = "portrait";
 const RISK_DISPLAY_HOLD_MS = 2500;
 const LEVEL2_RECOVERY_HOLD_MS = 1400;
+const HARD_BRAKE_RED_ACC_MAX = 6.0;
+const HARD_BRAKE_RED_ACC_VAR = 4.5;
+const HARD_BRAKE_YELLOW_ACC_VAR = 1.5;
+const HARD_BRAKE_DYNAMIC_BASE = 5.0;
+const HARD_BRAKE_DYNAMIC_SPEED_FACTOR = 0.02;
+const HARD_BRAKE_DYNAMIC_MIN = 2.5;
 
 const app = document.querySelector("#app");
 const permissionButton = document.querySelector("#permissionButton");
@@ -57,7 +64,7 @@ const state = {
   sensorSamples: [],
   yawWindowDeg: [],
   riskActiveSince: {
-    level1: null,
+    swing: null,
     level2: null,
   },
   lastRollRenderAt: 0,
@@ -210,13 +217,16 @@ function handleOrientation(event) {
 }
 
 function handleMotion(event) {
-  const linearAcceleration = event.acceleration ?? event.accelerationIncludingGravity;
+  const linearAcceleration = event.acceleration;
   const absoluteAccelerationSource = event.accelerationIncludingGravity ?? event.acceleration;
   const rotationRate = event.rotationRate;
 
   const linear = vectorFromAcceleration(linearAcceleration);
   const absolute = vectorFromAcceleration(absoluteAccelerationSource);
-  const absoluteAcceleration = magnitude(absolute);
+  const absoluteAccelerationWithGravity = magnitude(absolute);
+  const absoluteAcceleration = hasAccelerationVector(linearAcceleration)
+    ? magnitude(linear)
+    : Math.max(0, absoluteAccelerationWithGravity - 9.80665);
   const now = performance.now();
 
   if (absoluteAcceleration > 0) {
@@ -278,14 +288,23 @@ function calculateFeatures() {
   const yawRateVariance = variance(state.yawWindowDeg);
   const lateralGProxy = Math.abs(Math.sin(toRadians(rollDeg)));
   const mlResult = classifyMotoRisk(state.sensorSamples);
+  const absAccValues = pickSamples("absoluteAcceleration");
+  const speedKmh = state.speedMps * 3.6;
+  const hardBrakeThreshold = Math.max(
+    HARD_BRAKE_DYNAMIC_MIN,
+    HARD_BRAKE_DYNAMIC_BASE - speedKmh * HARD_BRAKE_DYNAMIC_SPEED_FACTOR
+  );
 
   return {
     timestamp: Date.now(),
     speedMps: state.speedMps,
-    speedKmh: state.speedMps * 3.6,
+    speedKmh,
     rollDeg,
     pitchDeg,
     jerk: state.motion.jerk,
+    absAccMax: Math.max(0, ...absAccValues),
+    absAccVar: variance(absAccValues),
+    hardBrakeThreshold,
     yawRateDeg: state.motion.yawRateDeg,
     yawRateRms,
     yawRateVariance,
@@ -302,6 +321,12 @@ function calculateFeatures() {
 }
 
 function inferRisk(features) {
+  const hardBrakeRed =
+    features.absAccMax >= HARD_BRAKE_RED_ACC_MAX ||
+    features.absAccVar >= HARD_BRAKE_RED_ACC_VAR;
+  const hardBrakeYellow =
+    features.absAccMax >= features.hardBrakeThreshold ||
+    features.absAccVar >= HARD_BRAKE_YELLOW_ACC_VAR;
   const highSpeed = features.speedKmh >= 60;
   const citySpeed = features.speedKmh >= 30;
   const level2Speed = features.speedKmh >= 40;
@@ -343,7 +368,7 @@ function inferRisk(features) {
       (features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD && highLean && extremeJerk) ||
       (highSpeed && extremeYaw) ||
       (features.lateralGProxy >= 0.84 && features.speedKmh >= LEVEL2_STRONG_SPEED_THRESHOLD));
-  const rawLevel1 =
+  const rawSwing =
     modelCritical ||
     modelFatigue ||
     (citySpeed && highLean) ||
@@ -352,27 +377,50 @@ function inferRisk(features) {
       ((unstableYaw && features.yawZeroCrossings >= 3) ||
         features.yawRateVariance >= 520));
 
+  if (hardBrakeRed) {
+    return {
+      level: 2,
+      key: "level2",
+      priority: 3,
+      title: "Level 2 高風險",
+      message: "極限重煞或碰撞風險已觸發紅標。",
+    };
+  }
+
   if (confirmedRisk("level2", rawLevel2, LEVEL2_CONFIRM_MS)) {
     return {
       level: 2,
       key: "level2",
+      priority: 3,
       title: "Level 2 高風險",
       message: "高速大傾角、重煞或連續左右擺振已觸發最高優先警示。",
     };
   }
 
-  if (confirmedRisk("level1", rawLevel1, LEVEL1_CONFIRM_MS)) {
+  if (hardBrakeYellow) {
     return {
       level: 1,
       key: "level1",
-      title: "Level 1 疲勞晃動",
-      message: "短時間 yaw rate 變化偏高，可能有微幅蛇行或路面碎震。",
+      priority: 2,
+      title: "Level 1 Urgent",
+      message: "緊急重煞或嚴重頓挫已觸發黃標。",
+    };
+  }
+
+  if (confirmedRisk("swing", rawSwing, SWING_CONFIRM_MS)) {
+    return {
+      level: 1,
+      key: "level1",
+      priority: 1,
+      title: "Level 1 Swing",
+      message: "連續晃動達 3 秒，可能有微幅蛇行或路面碎震。",
     };
   }
 
   return {
     level: 0,
     key: state.hasSensorPermission ? "level0" : "idle",
+    priority: 0,
     title: state.hasSensorPermission ? "Level 0 狀態正常" : "尚未啟動",
     message: state.hasSensorPermission ? "GPS 速度區間與 IMU 高頻資料持續監測中。" : "請先啟動感測器、GPS，並完成歸零校正。",
   };
@@ -404,6 +452,13 @@ function stabilizeRisk(nextRisk) {
     return nextRisk;
   }
 
+  if (nextRisk.level === currentRisk.level && riskPriority(nextRisk) > riskPriority(currentRisk)) {
+    state.displayedRisk = nextRisk;
+    state.pendingRisk = null;
+    state.pendingRiskSince = 0;
+    return nextRisk;
+  }
+
   if (nextRisk.key === currentRisk.key && nextRisk.title === currentRisk.title) {
     state.pendingRisk = null;
     state.pendingRiskSince = 0;
@@ -417,7 +472,7 @@ function stabilizeRisk(nextRisk) {
   }
 
   state.pendingRisk = nextRisk;
-  const holdMs = currentRisk.level === 2 && nextRisk.level < 2 ? LEVEL2_RECOVERY_HOLD_MS : RISK_DISPLAY_HOLD_MS;
+  const holdMs = recoveryHoldMs(currentRisk, nextRisk);
 
   if (now - state.pendingRiskSince >= holdMs) {
     state.displayedRisk = nextRisk;
@@ -430,7 +485,21 @@ function stabilizeRisk(nextRisk) {
 }
 
 function sameDisplayBand(leftRisk, rightRisk) {
+  if (leftRisk.level === 1 || rightRisk.level === 1) {
+    return leftRisk.level === rightRisk.level && leftRisk.key === rightRisk.key && leftRisk.title === rightRisk.title;
+  }
+
   return leftRisk.level === rightRisk.level && leftRisk.key === rightRisk.key;
+}
+
+function riskPriority(risk) {
+  return Number(risk.priority ?? risk.level ?? 0);
+}
+
+function recoveryHoldMs(currentRisk, nextRisk) {
+  if (currentRisk.level === 2 && nextRisk.level < 2) return LEVEL2_RECOVERY_HOLD_MS;
+  if (currentRisk.level === 1 && nextRisk.level < 1) return LEVEL1_RECOVERY_HOLD_MS;
+  return RISK_DISPLAY_HOLD_MS;
 }
 
 function render(features, risk) {
@@ -502,8 +571,17 @@ function vectorFromAcceleration(acceleration) {
   };
 }
 
+function hasAccelerationVector(acceleration) {
+  if (!acceleration) return false;
+  return ["x", "y", "z"].some((axis) => typeof acceleration[axis] === "number" && Number.isFinite(acceleration[axis]));
+}
+
 function magnitude(vector) {
   return Math.sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
+}
+
+function pickSamples(key) {
+  return state.sensorSamples.map((sample) => Number(sample[key] || 0));
 }
 
 function pushWindow(values, value, limit) {
