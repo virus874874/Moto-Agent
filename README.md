@@ -1,7 +1,7 @@
 # Moto-Agent
 
 Moto-Agent 是一個以機車騎乘安全監測為主題的 Web/PWA 專題。  
-它使用手機上的 GPS 與 IMU 感測器資料，結合 Aerox 資料集訓練出的決策樹規則與即時風險判斷，提供速度、傾角、Jerk 與風險 Level 顯示。
+使用手機上的 **GPS 與 IMU 感測器資料**，結合 Aerox 資料集訓練出的決策樹規則與即時風險判斷，提供速度、傾角、Jerk 與風險 Level 顯示。
 
 目前專案以 GitHub Pages + PWA 為主要部署方式。手機第一次載入後會快取必要檔案，之後可離線開啟 App 介面與執行本機推論。
 
@@ -13,7 +13,6 @@ GitHub Pages:
 https://virus874874.github.io/Moto-Agent/
 ```
 
-如果手機看到舊版畫面，請清除該網站資料，或在網址後加上 `?v=latest` 重新載入。
 
 ## Features
 
@@ -22,7 +21,6 @@ https://virus874874.github.io/Moto-Agent/
 - 使用 GPS 估算車速
 - 使用 DeviceMotion / DeviceOrientation 取得 IMU 資料
 - 即時顯示速度、傾角與 Jerk
-- Jerk 顏色會跟目前風險 Level 同步
 - 使用 Aerox 感測器資料訓練出的 JavaScript 決策樹做本機推論
 - 風險狀態包含 Level 0、Level 1 Swing、Level 1 Urgent、Level 2
 
@@ -182,10 +180,4 @@ python train_aerox_baseline.py
     └── deploy-pages.yml       # GitHub Pages 部署流程
 ```
 
-## Notes
-
-- 本專案為期末專題與原型展示用途，不應作為實際道路安全保證系統。
-- 測試時請先在低速、空曠、安全場地進行。
-- 請勿為了觸發高風險狀態而刻意製造危險動作。
-- iOS Safari 對感測器與螢幕方向鎖定支援較有限，建議加入主畫面後測試 PWA。
 
