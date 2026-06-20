@@ -509,7 +509,6 @@ function render(features, risk) {
   ui.speedBar.style.width = `${Math.min(100, Math.max(4, (features.speedKmh / 120) * 100))}%`;
   renderRoll(features.rollDeg);
   renderJerk(features.jerk);
-  ui.jerkMetric.dataset.jerkLevel = risk.key === "idle" ? "level0" : risk.key;
 
   if (risk.level === 2) {
     triggerCriticalCue();
@@ -525,9 +524,18 @@ function renderRoll(rollDeg) {
 
 function renderJerk(jerk) {
   const now = Date.now();
-  if (now - state.lastJerkRenderAt < JERK_DISPLAY_INTERVAL_MS) return;
+  const nextZone = jerkZone(jerk);
+  const zoneChanged = ui.jerkMetric.dataset.jerkZone !== nextZone;
+  if (!zoneChanged && now - state.lastJerkRenderAt < JERK_DISPLAY_INTERVAL_MS) return;
   state.lastJerkRenderAt = now;
   ui.jerk.textContent = jerk.toFixed(1);
+  ui.jerkMetric.dataset.jerkZone = nextZone;
+}
+
+function jerkZone(jerk) {
+  if (jerk > LEVEL2_JERK_THRESHOLD) return "high";
+  if (jerk > LEVEL1_JERK_THRESHOLD) return "watch";
+  return "calm";
 }
 
 async function primeAudio() {

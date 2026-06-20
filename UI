@@ -50,7 +50,7 @@
         <strong id="roll">--</strong>
         <small>deg</small>
       </article>
-      <article id="jerkMetric" class="metric" data-jerk-level="level0">
+      <article id="jerkMetric" class="metric" data-jerk-zone="calm">
         <span>Jerk</span>
         <strong id="jerk">--</strong>
         <small>m/s³</small>

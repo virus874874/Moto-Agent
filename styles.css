@@ -274,26 +274,26 @@ h1 {
   margin-top: 7px;
 }
 
-.metric[data-jerk-level="level0"] strong {
+.metric[data-jerk-zone="calm"] strong {
   color: #c3f400;
 }
 
-.metric[data-jerk-level="level1"] {
+.metric[data-jerk-zone="watch"] {
   border-color: rgba(255, 211, 77, 0.42);
   background: rgba(109, 82, 0, 0.28);
 }
 
-.metric[data-jerk-level="level1"] strong {
+.metric[data-jerk-zone="watch"] strong {
   color: #ffd34d;
 }
 
-.metric[data-jerk-level="level2"] {
+.metric[data-jerk-zone="high"] {
   border-color: rgba(255, 73, 98, 0.64);
   background: rgba(126, 0, 26, 0.34);
   box-shadow: 0 0 18px rgba(255, 73, 98, 0.16);
 }
 
-.metric[data-jerk-level="level2"] strong {
+.metric[data-jerk-zone="high"] strong {
   color: #ff4962;
   text-shadow: 0 0 16px rgba(255, 73, 98, 0.28);
 }
