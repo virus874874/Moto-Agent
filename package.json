@@ -4,19 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:web": "node scripts/prepare-web-assets.mjs",
-    "cap:add:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capacitor-from-ascii-temp.ps1 add android",
-    "cap:add:ios": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capacitor-from-ascii-temp.ps1 add ios",
-    "cap:sync": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capacitor-from-ascii-temp.ps1 sync",
-    "cap:sync:android": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capacitor-from-ascii-temp.ps1 sync android",
-    "cap:sync:ios": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/capacitor-from-ascii-temp.ps1 sync ios"
-  },
-  "dependencies": {
-    "@capacitor/core": "^8.0.0"
-  },
-  "devDependencies": {
-    "@capacitor/android": "^8.0.0",
-    "@capacitor/cli": "^8.0.0",
-    "@capacitor/ios": "^8.0.0"
+    "build:web": "node scripts/prepare-web-assets.mjs"
   }
 }

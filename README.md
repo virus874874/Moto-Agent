@@ -148,7 +148,6 @@ GPS 與 IMU 權限在手機瀏覽器中通常需要安全環境。
 ## Build PWA Assets
 
 ```bash
-npm install
 npm run build:web
 ```
 
@@ -185,11 +184,11 @@ python train_aerox_baseline.py
 ```text
 .
 ├── index.html                 # PWA 主頁
-├── UI                         # 與 index.html 同步的 UI 檔案
 ├── styles.css                 # App 介面樣式
 ├── app.js                     # 感測器、風險判斷、畫面更新
 ├── aerox_ml_rules.js          # 決策樹轉出的前端推論規則
 ├── train_aerox_baseline.py    # Aerox 資料訓練與 JS 規則輸出
+├── archive/aerox/             # Aerox 訓練資料
 ├── manifest.webmanifest       # PWA manifest
 ├── service-worker.js          # 離線快取與更新策略
 ├── scripts/
